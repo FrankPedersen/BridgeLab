@@ -7,6 +7,7 @@ interface NavbarProps {
   isEngineReady: boolean;
   totalDeals: number;
   lastLatencyMs?: number;
+  dataSource?: 'GCS' | 'Local';
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -15,6 +16,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   isEngineReady,
   totalDeals,
   lastLatencyMs,
+  dataSource = 'GCS',
 }) => {
   const navItems = [
     { path: '/', label: 'Oversigt' },
@@ -84,7 +86,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="text-slate-300 font-medium">
               {isEngineReady ? (
                 <>
-                  <span className="text-slate-400 hidden lg:inline">Hyparquet: </span>
+                  <span className="text-slate-400 hidden lg:inline">
+                    {dataSource === 'GCS' ? 'GCS Live: ' : 'Hyparquet: '}
+                  </span>
                   {totalDeals.toLocaleString('da-DK')} spil
                 </>
               ) : (

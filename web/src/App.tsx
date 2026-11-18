@@ -59,6 +59,8 @@ export function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
+  const [dataSource, setDataSource] = useState<'GCS' | 'Local'>('Local');
+
   // 1. Instant 0 ms Initial Render: Fetch tiny static JSON summaries
   useEffect(() => {
     const loadSummaries = async () => {
@@ -84,27 +86,41 @@ export function App() {
     loadSummaries();
   }, []);
 
-  // 2. Client-Side Parquet In-Memory Engine Loader
+  // 2. Client-Side Parquet In-Memory Engine Loader (GCS with local fallback)
   useEffect(() => {
     const initEngine = async () => {
-      try {
-        const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-        
-        // Load bridge_olap.parquet
-        const olapUrl = `${basePath}/data/bridge_olap.parquet`;
-        const sampleUrl = `${basePath}/data/sample_deals.parquet`;
+      const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+      const GCS_BASE = 'https://storage.googleapis.com/bridge-dds-explorer-data/v1';
 
+      try {
+        // Try Google Cloud Storage Always Free bucket first
+        console.log('[DDS Engine] Fetching Parquet dataset from GCS Always Free bucket...');
         const [loadedOlap, loadedSamples] = await Promise.all([
-          loadOlapDataset(olapUrl),
-          loadSampleDeals(sampleUrl),
+          loadOlapDataset(`${GCS_BASE}/bridge_olap.parquet`),
+          loadSampleDeals(`${GCS_BASE}/sample_deals.parquet`),
         ]);
 
         setOlapDb(loadedOlap);
         setSampleDb(loadedSamples);
+        setDataSource('GCS');
         setIsEngineReady(true);
-        console.log(`[DDS Engine] Loaded ${loadedOlap.length} OLAP rows and ${loadedSamples.length} sample deals into TypedArrays.`);
-      } catch (err) {
-        console.error('[DDS Engine] Error loading Parquet datasets:', err);
+        console.log(`[DDS Engine] Loaded from GCS: ${loadedOlap.length} OLAP rows and ${loadedSamples.length} sample deals into TypedArrays.`);
+      } catch (gcsErr) {
+        console.warn('[DDS Engine] GCS fetch failed, falling back to local dataset:', gcsErr);
+        try {
+          const [loadedOlap, loadedSamples] = await Promise.all([
+            loadOlapDataset(`${basePath}/data/bridge_olap.parquet`),
+            loadSampleDeals(`${basePath}/data/sample_deals.parquet`),
+          ]);
+
+          setOlapDb(loadedOlap);
+          setSampleDb(loadedSamples);
+          setDataSource('Local');
+          setIsEngineReady(true);
+          console.log(`[DDS Engine] Loaded from local: ${loadedOlap.length} OLAP rows and ${loadedSamples.length} sample deals into TypedArrays.`);
+        } catch (localErr) {
+          console.error('[DDS Engine] Fatal error loading Parquet datasets:', localErr);
+        }
       }
     };
 
@@ -131,6 +147,7 @@ export function App() {
         isEngineReady={isEngineReady}
         totalDeals={totalDeals}
         lastLatencyMs={lastLatencyMs}
+        dataSource={dataSource}
       />
 
       {/* Main Content Pages */}
