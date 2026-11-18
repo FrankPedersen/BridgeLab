@@ -5,6 +5,17 @@ param (
 $ErrorActionPreference = "Stop"
 $Region = "us-central1"
 
+# 0. Sørg for at gcloud er tilgængelig i PATH
+if (-not (Get-Command gcloud -ErrorAction SilentlyContinue)) {
+    $GcloudDefaultPath = Join-Path $env:LOCALAPPDATA "Google\Cloud SDK\google-cloud-sdk\bin"
+    if (Test-Path (Join-Path $GcloudDefaultPath "gcloud.cmd")) {
+        $env:PATH = "$GcloudDefaultPath;$env:PATH"
+    }
+}
+
+# Attribution
+$env:CLOUDSDK_METRICS_ENVIRONMENT = if ($env:CLOUDSDK_METRICS_ENVIRONMENT) { "$env:CLOUDSDK_METRICS_ENVIRONMENT datacloud.antigravity" } else { "datacloud.antigravity" }
+
 Write-Host "=== Setting up Google Cloud Storage Bucket: gs://$BucketName ===" -ForegroundColor Cyan
 
 # 1. Opret bucket i Always Free region (us-central1)
