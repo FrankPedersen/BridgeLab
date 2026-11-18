@@ -1,0 +1,44 @@
+# Bridge DDS Explorer Configuration
+
+simulation:
+  total_deals: 5000000          # Fuld batch-størrelse (5 mio. spil)
+  test_deals: 50000             # Hurtig test-batch
+  sample_deals_count: 20000     # Eksempler gemt i sample_deals.parquet
+  chunk_size: 50000             # Antal spil pr. batch i RAM
+
+conventions:
+  flannery:
+    bit: 0
+    mask: 1
+    description: "Flannery (11-15 HP, 4♠, 5♥, ikke 5-5)"
+    min_hcp: 11
+    max_hcp: 15
+    spades: 4
+    hearts: 5
+
+  weak_two:
+    bit: 1
+    mask: 2
+    description: "Weak Two (6-farve ♥/♠/♦, 6-10 HP)"
+    min_hcp: 6
+    max_hcp: 10
+    suit_length: 6
+
+  precision_1c:
+    bit: 2
+    mask: 4
+    description: "Precision 1♣ (16+ HP)"
+    min_hcp: 16
+
+  multi_2d:
+    bit: 3
+    mask: 8
+    description: "Multi 2♦ (Svag 2 i major, 6-10 HP)"
+    min_hcp: 6
+    max_hcp: 10
+    suit_length: 6
+
+storage:
+  bucket_name: "bridge-dds-explorer-data"
+  region: "us-central1"
+  data_version: "v1"

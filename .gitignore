@@ -1,0 +1,24 @@
+# Node & Vite
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Python & Venv
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+*.egg-info/
+
+# Pipeline temporary/large master files
+pipeline/output/master_dds.parquet
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
