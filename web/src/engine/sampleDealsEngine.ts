@@ -48,9 +48,14 @@ export async function loadSampleDeals(source: string | ArrayBuffer): Promise<Sam
   }
 
   const ds: Partial<SampleDealsDataset> = {};
+  const expectedCols = [
+    'deal_id', 'opener_hcp', 'spades', 'hearts', 'diamonds', 'clubs',
+    'conv_flags', 'dds_s', 'dds_h', 'dds_d', 'dds_c', 'dds_nt'
+  ];
 
   await parquetRead({
     file: arrayBuffer,
+    columns: expectedCols,
     onComplete: (data: any[][]) => {
       const n = data.length;
       ds.length = n;
@@ -67,21 +72,39 @@ export async function loadSampleDeals(source: string | ArrayBuffer): Promise<Sam
       ds.dds_c = new Uint8Array(n);
       ds.dds_nt = new Uint8Array(n);
 
-      for (let i = 0; i < n; i++) {
-        const row = data[i];
-        // deal_id is bigint in parquet, cast to number
-        ds.deal_id![i] = Number(row[0]);
-        ds.opener_hcp![i] = row[1];
-        ds.spades![i] = row[2];
-        ds.hearts![i] = row[3];
-        ds.diamonds![i] = row[4];
-        ds.clubs![i] = row[5];
-        ds.conv_flags![i] = row[6];
-        ds.dds_s![i] = row[7];
-        ds.dds_h![i] = row[8];
-        ds.dds_d![i] = row[9];
-        ds.dds_c![i] = row[10];
-        ds.dds_nt![i] = row[11];
+      if (n > 0) {
+        const isArr = Array.isArray(data[0]);
+        for (let i = 0; i < n; i++) {
+          const row = data[i];
+          if (isArr) {
+            ds.deal_id![i] = Number(row[0]);
+            ds.opener_hcp![i] = row[1];
+            ds.spades![i] = row[2];
+            ds.hearts![i] = row[3];
+            ds.diamonds![i] = row[4];
+            ds.clubs![i] = row[5];
+            ds.conv_flags![i] = row[6];
+            ds.dds_s![i] = row[7];
+            ds.dds_h![i] = row[8];
+            ds.dds_d![i] = row[9];
+            ds.dds_c![i] = row[10];
+            ds.dds_nt![i] = row[11];
+          } else {
+            const r = row as any;
+            ds.deal_id![i] = Number(r.deal_id);
+            ds.opener_hcp![i] = r.opener_hcp;
+            ds.spades![i] = r.spades;
+            ds.hearts![i] = r.hearts;
+            ds.diamonds![i] = r.diamonds;
+            ds.clubs![i] = r.clubs;
+            ds.conv_flags![i] = r.conv_flags;
+            ds.dds_s![i] = r.dds_s;
+            ds.dds_h![i] = r.dds_h;
+            ds.dds_d![i] = r.dds_d;
+            ds.dds_c![i] = r.dds_c;
+            ds.dds_nt![i] = r.dds_nt;
+          }
+        }
       }
     },
   });

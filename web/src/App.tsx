@@ -27,6 +27,9 @@ export function App() {
   const [sampleDb, setSampleDb] = useState<SampleDealsDataset | null>(null);
   const [isEngineReady, setIsEngineReady] = useState(false);
   const [lastLatencyMs, setLastLatencyMs] = useState<number | undefined>(undefined);
+  const handleLatencyUpdate = React.useCallback((ms: number) => {
+    setLastLatencyMs(ms);
+  }, []);
 
   // Static summaries for 0 ms initial render
   const [summaries, setSummaries] = useState<{
@@ -166,7 +169,7 @@ export function App() {
             sampleDb={sampleDb}
             totalDeals={totalDeals}
             fallbackSummary={summaries.flannery}
-            onLatencyUpdate={setLastLatencyMs}
+            onLatencyUpdate={handleLatencyUpdate}
           />
         )}
 
@@ -176,7 +179,7 @@ export function App() {
             sampleDb={sampleDb}
             totalDeals={totalDeals}
             fallbackSummary={summaries.weakTwo}
-            onLatencyUpdate={setLastLatencyMs}
+            onLatencyUpdate={handleLatencyUpdate}
           />
         )}
 
@@ -186,7 +189,7 @@ export function App() {
             sampleDb={sampleDb}
             totalDeals={totalDeals}
             fallbackSummary={summaries.precision}
-            onLatencyUpdate={setLastLatencyMs}
+            onLatencyUpdate={handleLatencyUpdate}
           />
         )}
 
@@ -196,7 +199,7 @@ export function App() {
             sampleDb={sampleDb}
             totalDeals={totalDeals}
             fallbackSummary={summaries.global}
-            onLatencyUpdate={setLastLatencyMs}
+            onLatencyUpdate={handleLatencyUpdate}
           />
         )}
       </main>

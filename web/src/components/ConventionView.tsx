@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { BridgeFilter, OlapColumns, QueryResult, runBridgeQuery } from '../engine/bridgeQueryEngine';
 import { SampleDealsDataset, queryMatchingSamples, SampleDealRecord } from '../engine/sampleDealsEngine';
 import { MadLibsFilter } from './MadLibsFilter';
@@ -36,16 +36,23 @@ export const ConventionView: React.FC<ConventionViewProps> = ({
   const [filter, setFilter] = useState<BridgeFilter>(defaultFilter);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
-  // When defaultFilter changes (page route change), update filter
+  // When defaultFilter changes (page route change), update filter only if values actually changed
+  const defaultFilterSerialized = JSON.stringify(defaultFilter);
+  const prevDefaultFilterRef = useRef(defaultFilterSerialized);
+
   useEffect(() => {
-    setFilter(defaultFilter);
-  }, [defaultFilter]);
+    if (prevDefaultFilterRef.current !== defaultFilterSerialized) {
+      prevDefaultFilterRef.current = defaultFilterSerialized;
+      setFilter(defaultFilter);
+    }
+  }, [defaultFilterSerialized, defaultFilter]);
 
   // Compute live QueryResult from in-memory OlapColumns
   const queryResult: QueryResult = useMemo(() => {
     if (olapDb) {
+      console.log('[ConventionView] Running query on OLAP db with filter:', filter);
       const res = runBridgeQuery(olapDb, filter);
-      if (onLatencyUpdate) onLatencyUpdate(res.queryTimeMs);
+      console.log('[ConventionView] Query result:', res.totalDeals, 'deals, 4H:', res.pct4H, '%, tid:', res.queryTimeMs, 'ms');
       return res;
     }
 
@@ -77,7 +84,14 @@ export const ConventionView: React.FC<ConventionViewProps> = ({
       distNT: new Array(14).fill(0),
       queryTimeMs: 0,
     };
-  }, [olapDb, filter, fallbackSummary, onLatencyUpdate]);
+  }, [olapDb, filter, fallbackSummary]);
+
+  // Safely propagate latency to parent without triggering render loops
+  useEffect(() => {
+    if (onLatencyUpdate && queryResult.queryTimeMs !== undefined) {
+      onLatencyUpdate(queryResult.queryTimeMs);
+    }
+  }, [queryResult.queryTimeMs, onLatencyUpdate]);
 
   // Query up to 5 matching sample deals for the 4-hand card viewer
   const sampleDeals: SampleDealRecord[] = useMemo(() => {

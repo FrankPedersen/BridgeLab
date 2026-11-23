@@ -60,9 +60,15 @@ export async function loadOlapDataset(source: string | ArrayBuffer): Promise<Ola
   }
 
   const cols: Partial<OlapColumns> = {};
+  const expectedCols = [
+    'opener_hcp', 'spades', 'hearts', 'diamonds', 'clubs',
+    'conv_flags', 'responder_hcp', 'spade_fit', 'heart_fit',
+    'dds_s', 'dds_h', 'dds_nt', 'opp_game', 'deal_count'
+  ];
 
   await parquetRead({
     file: arrayBuffer,
+    columns: expectedCols,
     onComplete: (data: any[][]) => {
       const n = data.length;
       cols.length = n;
@@ -81,23 +87,49 @@ export async function loadOlapDataset(source: string | ArrayBuffer): Promise<Ola
       cols.opp_game = new Uint8Array(n);
       cols.deal_count = new Uint32Array(n);
 
-      for (let i = 0; i < n; i++) {
-        const row = data[i];
-        cols.opener_hcp![i] = row[0];
-        cols.spades![i] = row[1];
-        cols.hearts![i] = row[2];
-        cols.diamonds![i] = row[3];
-        cols.clubs![i] = row[4];
-        cols.conv_flags![i] = row[5];
-        cols.responder_hcp![i] = row[6];
-        cols.spade_fit![i] = row[7];
-        cols.heart_fit![i] = row[8];
-        cols.dds_s![i] = row[9];
-        cols.dds_h![i] = row[10];
-        cols.dds_nt![i] = row[11];
-        cols.opp_game![i] = row[12];
-        cols.deal_count![i] = row[13];
+      if (n > 0) {
+        const isArr = Array.isArray(data[0]);
+        for (let i = 0; i < n; i++) {
+          const row = data[i];
+          if (isArr) {
+            cols.opener_hcp![i] = row[0];
+            cols.spades![i] = row[1];
+            cols.hearts![i] = row[2];
+            cols.diamonds![i] = row[3];
+            cols.clubs![i] = row[4];
+            cols.conv_flags![i] = row[5];
+            cols.responder_hcp![i] = row[6];
+            cols.spade_fit![i] = row[7];
+            cols.heart_fit![i] = row[8];
+            cols.dds_s![i] = row[9];
+            cols.dds_h![i] = row[10];
+            cols.dds_nt![i] = row[11];
+            cols.opp_game![i] = row[12];
+            cols.deal_count![i] = row[13];
+          } else {
+            const r = row as any;
+            cols.opener_hcp![i] = r.opener_hcp;
+            cols.spades![i] = r.spades;
+            cols.hearts![i] = r.hearts;
+            cols.diamonds![i] = r.diamonds;
+            cols.clubs![i] = r.clubs;
+            cols.conv_flags![i] = r.conv_flags;
+            cols.responder_hcp![i] = r.responder_hcp;
+            cols.spade_fit![i] = r.spade_fit;
+            cols.heart_fit![i] = r.heart_fit;
+            cols.dds_s![i] = r.dds_s;
+            cols.dds_h![i] = r.dds_h;
+            cols.dds_nt![i] = r.dds_nt;
+            cols.opp_game![i] = r.opp_game;
+            cols.deal_count![i] = r.deal_count;
+          }
+        }
       }
+
+      const rows = data;
+      const db = cols as OlapColumns;
+      console.log('Første række:', rows[0], 'Total deals:', db.deal_count[0]);
+      console.log(`[DDS Engine] Indlæst ${n} rækker. Første række deal_count: ${db.deal_count[0]}`);
     },
   });
 

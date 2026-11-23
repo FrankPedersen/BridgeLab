@@ -1,7 +1,9 @@
 import React from 'react';
 import { ConventionView } from '../components/ConventionView';
-import { OlapColumns } from '../engine/bridgeQueryEngine';
+import { BridgeFilter, OlapColumns } from '../engine/bridgeQueryEngine';
 import { SampleDealsDataset } from '../engine/sampleDealsEngine';
+
+const DEFAULT_EXPLORER_FILTER: BridgeFilter = {};
 
 interface ExplorerPageProps {
   olapDb: OlapColumns | null;
@@ -24,7 +26,7 @@ export const ExplorerPage: React.FC<ExplorerPageProps> = ({
       badge="Fuld Ad-Hoc Analyse"
       description="Design dine egne hypoteser og filtrer frit på tværs af honnørpoint, enkeltfarver, majorfits og konventions-flag. Alle beregninger aggregeres lynhurtigt i browseren direkte på de flade TypedArrays."
       theoryNotes="Brug Mad Libs filterbaren eller klik på 'Avanceret' for at angive præcise kortantal i spar, hjerter, ruder eller klør samt makkers forventede styrke."
-      defaultFilter={{}}
+      defaultFilter={DEFAULT_EXPLORER_FILTER}
       fallbackSummary={fallbackSummary}
       olapDb={olapDb}
       sampleDb={sampleDb}

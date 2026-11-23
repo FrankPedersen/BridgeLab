@@ -42,10 +42,37 @@ export const MadLibsFilter: React.FC<MadLibsFilterProps> = ({
   })();
 
   const handleConvSelect = (val: number) => {
-    onFilterChange({
+    const updated: BridgeFilter = {
       ...filter,
       convMask: val === 0 ? undefined : val,
-    });
+    };
+    if (val === 1) {
+      updated.minHcp = 11;
+      updated.maxHcp = 15;
+      updated.exactSpades = 4;
+      updated.exactHearts = 5;
+    } else if (val === 2) {
+      updated.minHcp = 6;
+      updated.maxHcp = 10;
+      delete updated.exactSpades;
+      delete updated.exactHearts;
+    } else if (val === 4) {
+      updated.minHcp = 16;
+      delete updated.maxHcp;
+      delete updated.exactSpades;
+      delete updated.exactHearts;
+    } else if (val === 8) {
+      updated.minHcp = 6;
+      updated.maxHcp = 10;
+      delete updated.exactSpades;
+      delete updated.exactHearts;
+    } else if (val === 0) {
+      delete updated.convMask;
+      delete updated.exactSpades;
+      delete updated.exactHearts;
+    }
+    console.log('[Filter] Convention selected:', val, updated);
+    onFilterChange(updated);
   };
 
   const handleHcpSelect = (val: string) => {
@@ -56,7 +83,12 @@ export const MadLibsFilter: React.FC<MadLibsFilterProps> = ({
     else if (val === '6-10') { minHcp = 6; maxHcp = 10; }
     else if (val === '16+') { minHcp = 16; maxHcp = undefined; }
     else if (val === '20+') { minHcp = 20; maxHcp = undefined; }
-    onFilterChange({ ...filter, minHcp, maxHcp });
+    
+    const updated: BridgeFilter = { ...filter, minHcp, maxHcp };
+    if (minHcp === undefined) delete updated.minHcp;
+    if (maxHcp === undefined) delete updated.maxHcp;
+    console.log('[Filter] HCP range selected:', val, updated);
+    onFilterChange(updated);
   };
 
   const handleClubSelect = (val: string) => {
@@ -64,14 +96,22 @@ export const MadLibsFilter: React.FC<MadLibsFilterProps> = ({
     if (val === 'singleton') exactClubs = 1;
     else if (val === 'renonce') exactClubs = 0;
     else if (val === 'doubleton') exactClubs = 2;
-    onFilterChange({ ...filter, exactClubs });
+    
+    const updated: BridgeFilter = { ...filter, exactClubs };
+    if (exactClubs === undefined) delete updated.exactClubs;
+    console.log('[Filter] Club distribution selected:', val, updated);
+    onFilterChange(updated);
   };
 
   const handleFitSelect = (val: string) => {
     let minMajorFit: number | undefined;
     if (val === '8+') minMajorFit = 8;
     else if (val === '9+') minMajorFit = 9;
-    onFilterChange({ ...filter, minMajorFit });
+    
+    const updated: BridgeFilter = { ...filter, minMajorFit };
+    if (minMajorFit === undefined) delete updated.minMajorFit;
+    console.log('[Filter] Major fit selected:', val, updated);
+    onFilterChange(updated);
   };
 
   return (
