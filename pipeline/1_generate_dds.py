@@ -1,20 +1,30 @@
 """
-1_generate_dds.py - Batch deal simulation and Double Dummy Solving
-Generates deterministic deals from Mulberry32 PRNG and calculates DDS tricks.
-Outputs to output/master_dds.parquet using pyarrow.
+1_generate_dds.py - High-Performance Multiprocess Bridge Simulator & DDS Generator
+Scales to 5,000,000 deals using multiprocessing and chunked Parquet writing.
+Keeps memory usage under 2 GB by streaming chunks to disk.
+Computes technique_flags (uint16) via the FastTechniqueEvaluator two-tier engine.
 """
 
 import os
 import sys
 import argparse
-import yaml
+import time
+import shutil
 from pathlib import Path
-from tqdm import tqdm
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import pyarrow as pa
 import pyarrow.parquet as pq
+from tqdm import tqdm
+import yaml
+
+# Add pipeline directory to sys.path for child processes
+pipeline_dir = Path(__file__).parent.resolve()
+if str(pipeline_dir) not in sys.path:
+    sys.path.insert(0, str(pipeline_dir))
 
 from deal_prng import generate_deal, evaluate_hand, compute_conv_flags
 from dds_engine import solve_deal
+from technique_detector import FastTechniqueEvaluator
 
 
 def get_schema() -> pa.Schema:
@@ -35,85 +45,168 @@ def get_schema() -> pa.Schema:
         ('dds_c', pa.uint8()),
         ('dds_nt', pa.uint8()),
         ('opp_game', pa.uint8()),
+        ('technique_flags', pa.uint16()),
     ])
 
 
+def _worker_process_range(start_id: int, count: int) -> tuple:
+    """
+    Worker function executed in parallel across CPU cores.
+    Processes a slice of deals deterministically and evaluates technique_flags.
+    """
+    schema_names = [
+        'deal_id', 'opener_hcp', 'spades', 'hearts', 'diamonds', 'clubs',
+        'conv_flags', 'responder_hcp', 'spade_fit', 'heart_fit',
+        'dds_s', 'dds_h', 'dds_d', 'dds_c', 'dds_nt', 'opp_game', 'technique_flags'
+    ]
+    cols = {name: [] for name in schema_names}
+    candidates_count = 0
+
+    for i in range(count):
+        deal_id = start_id + i
+        n_cards, e_cards, s_cards, w_cards = generate_deal(deal_id)
+
+        n_eval = evaluate_hand(n_cards)
+        s_eval = evaluate_hand(s_cards)
+        e_eval = evaluate_hand(e_cards)
+        w_eval = evaluate_hand(w_cards)
+
+        conv_flags = compute_conv_flags(s_eval)
+        dds = solve_deal((n_cards, e_cards, s_cards, w_cards), n_eval, s_eval, e_eval, w_eval)
+
+        # Tier 1 & Tier 2 Fast Technique Evaluation
+        tech_flags, _ = FastTechniqueEvaluator.evaluate_deal(
+            (n_cards, e_cards, s_cards, w_cards),
+            n_eval, s_eval, e_eval, w_eval, dds,
+            detailed=False
+        )
+        if tech_flags > 0:
+            candidates_count += 1
+
+        cols['deal_id'].append(deal_id)
+        cols['opener_hcp'].append(s_eval['hcp'])
+        cols['spades'].append(s_eval['spades'])
+        cols['hearts'].append(s_eval['hearts'])
+        cols['diamonds'].append(s_eval['diamonds'])
+        cols['clubs'].append(s_eval['clubs'])
+        cols['conv_flags'].append(conv_flags)
+        cols['responder_hcp'].append(n_eval['hcp'])
+        cols['spade_fit'].append(s_eval['spades'] + n_eval['spades'])
+        cols['heart_fit'].append(s_eval['hearts'] + n_eval['hearts'])
+        cols['dds_s'].append(dds['dds_s'])
+        cols['dds_h'].append(dds['dds_h'])
+        cols['dds_d'].append(dds['dds_d'])
+        cols['dds_c'].append(dds['dds_c'])
+        cols['dds_nt'].append(dds['dds_nt'])
+        cols['opp_game'].append(dds['opp_game'])
+        cols['technique_flags'].append(tech_flags)
+
+    return cols, candidates_count
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Simulate bridge deals and compute DDS results.")
-    parser.add_argument("--deals", type=int, default=None, help="Number of deals to simulate (overrides config)")
-    parser.add_argument("--chunk-size", type=int, default=50000, help="Chunk size for batch writing")
+    parser = argparse.ArgumentParser(description="High-performance Bridge DDS & Technique Generator.")
+    parser.add_argument("--deals", type=int, default=None, help="Total deals to simulate")
+    parser.add_argument("--chunk-size", type=int, default=100000, help="Deals per raw parquet chunk")
+    parser.add_argument("--workers", type=int, default=None, help="Number of parallel worker processes")
     args = parser.parse_args()
 
-    config_path = Path(__file__).parent / "config.yaml"
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    config_path = pipeline_dir / "config.yaml"
+    if config_path.exists():
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+    else:
+        config = {"simulation": {"test_deals": 50000}}
 
     total_deals = args.deals if args.deals is not None else config["simulation"].get("test_deals", 50000)
     chunk_size = args.chunk_size
 
-    output_dir = Path(__file__).parent / "output"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / "master_dds.parquet"
+    # Optimal CPU workers
+    num_cpus = os.cpu_count() or 4
+    num_workers = args.workers if args.workers is not None else max(1, num_cpus - 1)
 
-    print(f"=== Bridge DDS Generator ===")
-    print(f"Total deals to simulate: {total_deals:,}")
-    print(f"Chunk size: {chunk_size:,}")
-    print(f"Output: {output_file}")
+    output_dir = pipeline_dir / "output"
+    chunks_dir = output_dir / "raw_chunks"
+    chunks_dir.mkdir(parents=True, exist_ok=True)
+
+    # Clean previous raw chunks for a clean run
+    for old_file in chunks_dir.glob("*.parquet"):
+        try:
+            old_file.unlink()
+        except Exception:
+            pass
 
     schema = get_schema()
-    writer = pq.ParquetWriter(output_file, schema, compression='snappy')
-
     num_chunks = (total_deals + chunk_size - 1) // chunk_size
 
+    print(f"=== BridgeLab 5M DDS & Advanced Technique Generator ===")
+    print(f"Total deals:        {total_deals:,}")
+    print(f"Chunk size:         {chunk_size:,} deals/chunk ({num_chunks} chunks)")
+    print(f"Parallel workers:   {num_workers} processes (on {num_cpus} CPU cores)")
+    print(f"Chunks directory:   {chunks_dir}")
+
+    start_time = time.time()
     total_generated = 0
-    with tqdm(total=total_deals, desc="Simulating & Solving") as pbar:
-        for chunk_idx in range(num_chunks):
-            current_chunk_size = min(chunk_size, total_deals - total_generated)
-            if current_chunk_size <= 0:
-                break
+    total_candidates = 0
 
-            cols = {name: [] for name in schema.names}
+    # Worker task slice size (e.g. 10,000 deals per sub-task for even distribution)
+    slice_size = min(10000, max(1000, chunk_size // (num_workers * 2)))
 
-            for i in range(current_chunk_size):
-                deal_id = total_generated + i
-                n_cards, e_cards, s_cards, w_cards = generate_deal(deal_id)
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        with tqdm(total=total_deals, desc="Generating & Solving", unit="deals") as pbar:
+            for chunk_idx in range(num_chunks):
+                current_chunk_size = min(chunk_size, total_deals - total_generated)
+                if current_chunk_size <= 0:
+                    break
 
-                n_eval = evaluate_hand(n_cards)
-                s_eval = evaluate_hand(s_cards)
-                e_eval = evaluate_hand(e_cards)
-                w_eval = evaluate_hand(w_cards)
+                # Prepare slices for parallel workers
+                futures = []
+                chunk_start_id = total_generated
+                offset = 0
+                while offset < current_chunk_size:
+                    current_slice = min(slice_size, current_chunk_size - offset)
+                    futures.append(
+                        executor.submit(_worker_process_range, chunk_start_id + offset, current_slice)
+                    )
+                    offset += current_slice
 
-                conv_flags = compute_conv_flags(s_eval)
-                dds = solve_deal((n_cards, e_cards, s_cards, w_cards), n_eval, s_eval, e_eval, w_eval)
+                # Aggregate results for this chunk in memory
+                chunk_cols = {name: [] for name in schema.names}
+                for f in as_completed(futures):
+                    slice_cols, c_count = f.result()
+                    total_candidates += c_count
+                    for name in schema.names:
+                        chunk_cols[name].extend(slice_cols[name])
 
-                cols['deal_id'].append(deal_id)
-                cols['opener_hcp'].append(s_eval['hcp'])
-                cols['spades'].append(s_eval['spades'])
-                cols['hearts'].append(s_eval['hearts'])
-                cols['diamonds'].append(s_eval['diamonds'])
-                cols['clubs'].append(s_eval['clubs'])
-                cols['conv_flags'].append(conv_flags)
-                cols['responder_hcp'].append(n_eval['hcp'])
-                cols['spade_fit'].append(s_eval['spades'] + n_eval['spades'])
-                cols['heart_fit'].append(s_eval['hearts'] + n_eval['hearts'])
-                cols['dds_s'].append(dds['dds_s'])
-                cols['dds_h'].append(dds['dds_h'])
-                cols['dds_d'].append(dds['dds_d'])
-                cols['dds_c'].append(dds['dds_c'])
-                cols['dds_nt'].append(dds['dds_nt'])
-                cols['opp_game'].append(dds['opp_game'])
+                # Build PyArrow Table and write immediately to chunk file
+                chunk_table = pa.Table.from_arrays(
+                    [pa.array(chunk_cols[name], type=schema.field(name).type) for name in schema.names],
+                    schema=schema
+                )
 
-            batch_table = pa.Table.from_arrays(
-                [pa.array(cols[name], type=schema.field(name).type) for name in schema.names],
-                schema=schema
-            )
-            writer.write_table(batch_table)
-            total_generated += current_chunk_size
-            pbar.update(current_chunk_size)
+                chunk_file = chunks_dir / f"chunk_{chunk_idx:04d}.parquet"
+                pq.write_table(chunk_table, chunk_file, compression='snappy')
 
-    writer.close()
-    file_size_mb = output_file.stat().st_size / (1024 * 1024)
-    print(f"Successfully generated {total_generated:,} deals into {output_file} ({file_size_mb:.2f} MB)")
+                total_generated += current_chunk_size
+                pbar.update(current_chunk_size)
+
+                # Update tqdm description with current speed & technique rate
+                elapsed = time.time() - start_time
+                rate = total_generated / elapsed if elapsed > 0 else 0
+                tech_pct = (total_candidates / total_generated * 100) if total_generated > 0 else 0
+                pbar.set_postfix({
+                    "deals/s": f"{rate:,.0f}",
+                    "tech_rate": f"{tech_pct:.1f}%",
+                    "chunk": f"{chunk_idx+1}/{num_chunks}"
+                })
+
+    elapsed_total = time.time() - start_time
+    total_rate = total_generated / elapsed_total if elapsed_total > 0 else 0
+    tech_total_pct = (total_candidates / total_generated * 100) if total_generated > 0 else 0
+
+    print(f"\n[OK] Step 1 Complete in {elapsed_total:.2f}s ({total_rate:,.0f} deals/sec)")
+    print(f"Generated {total_generated:,} deals across {num_chunks} raw chunks.")
+    print(f"Deals with advanced techniques detected: {total_candidates:,} ({tech_total_pct:.1f}%)")
 
 
 if __name__ == "__main__":

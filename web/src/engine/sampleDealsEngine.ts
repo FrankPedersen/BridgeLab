@@ -14,6 +14,12 @@ export interface SampleDealRecord {
   ddsD: number;
   ddsC: number;
   ddsNt: number;
+  techniqueFlags?: number;
+  geminiNote?: {
+    techniques: string[];
+    critical_trick: number;
+    summary_da: string;
+  };
 }
 
 export interface SampleDealsDataset {
@@ -30,6 +36,7 @@ export interface SampleDealsDataset {
   dds_d: Uint8Array;
   dds_c: Uint8Array;
   dds_nt: Uint8Array;
+  technique_flags?: Uint16Array;
 }
 
 /**
@@ -50,7 +57,7 @@ export async function loadSampleDeals(source: string | ArrayBuffer): Promise<Sam
   const ds: Partial<SampleDealsDataset> = {};
   const expectedCols = [
     'deal_id', 'opener_hcp', 'spades', 'hearts', 'diamonds', 'clubs',
-    'conv_flags', 'dds_s', 'dds_h', 'dds_d', 'dds_c', 'dds_nt'
+    'conv_flags', 'dds_s', 'dds_h', 'dds_d', 'dds_c', 'dds_nt', 'technique_flags'
   ];
 
   await parquetRead({
@@ -71,6 +78,7 @@ export async function loadSampleDeals(source: string | ArrayBuffer): Promise<Sam
       ds.dds_d = new Uint8Array(n);
       ds.dds_c = new Uint8Array(n);
       ds.dds_nt = new Uint8Array(n);
+      ds.technique_flags = new Uint16Array(n);
 
       if (n > 0) {
         const isArr = Array.isArray(data[0]);
@@ -89,6 +97,7 @@ export async function loadSampleDeals(source: string | ArrayBuffer): Promise<Sam
             ds.dds_d![i] = row[9];
             ds.dds_c![i] = row[10];
             ds.dds_nt![i] = row[11];
+            ds.technique_flags![i] = row[12] ? Number(row[12]) : 0;
           } else {
             const r = row as any;
             ds.deal_id![i] = Number(r.deal_id);
@@ -103,6 +112,7 @@ export async function loadSampleDeals(source: string | ArrayBuffer): Promise<Sam
             ds.dds_d![i] = r.dds_d;
             ds.dds_c![i] = r.dds_c;
             ds.dds_nt![i] = r.dds_nt;
+            ds.technique_flags![i] = r.technique_flags ? Number(r.technique_flags) : 0;
           }
         }
       }
@@ -123,13 +133,18 @@ export function queryMatchingSamples(
   const matches: SampleDealRecord[] = [];
   const {
     length, deal_id, opener_hcp, spades, hearts, diamonds, clubs, conv_flags,
-    dds_s, dds_h, dds_d, dds_c, dds_nt
+    dds_s, dds_h, dds_d, dds_c, dds_nt, technique_flags
   } = dataset;
 
   for (let i = 0; i < length; i++) {
     // 1. Convention check
     if (filter.convMask !== undefined && filter.convMask > 0) {
       if ((conv_flags[i] & filter.convMask) === 0) continue;
+    }
+
+    // Technique check
+    if (filter.techniqueMask !== undefined && filter.techniqueMask > 0 && technique_flags) {
+      if ((technique_flags[i] & filter.techniqueMask) === 0) continue;
     }
 
     // 2. Opener HCP
@@ -156,6 +171,7 @@ export function queryMatchingSamples(
       ddsD: dds_d[i],
       ddsC: dds_c[i],
       ddsNt: dds_nt[i],
+      techniqueFlags: technique_flags ? technique_flags[i] : 0,
     });
 
     if (matches.length >= limit) {

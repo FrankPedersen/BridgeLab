@@ -16,10 +16,12 @@ export interface OlapColumns {
   dds_nt: Uint8Array;
   opp_game: Uint8Array;
   deal_count: Uint32Array;
+  technique_flags?: Uint16Array;
 }
 
 export interface BridgeFilter {
   convMask?: number;       // 1 = Flannery, 2 = Weak Two, 4 = Precision 1♣, 8 = Multi 2♦
+  techniqueMask?: number;  // 1 = Squeeze, 2 = Endplay, 4 = Trump Coup, 8 = Vienna, 16 = Scissors, 32 = Morton's Fork, 64 = Intra-Finesse
   minHcp?: number;
   maxHcp?: number;
   exactClubs?: number;
@@ -63,7 +65,7 @@ export async function loadOlapDataset(source: string | ArrayBuffer): Promise<Ola
   const expectedCols = [
     'opener_hcp', 'spades', 'hearts', 'diamonds', 'clubs',
     'conv_flags', 'responder_hcp', 'spade_fit', 'heart_fit',
-    'dds_s', 'dds_h', 'dds_nt', 'opp_game', 'deal_count'
+    'dds_s', 'dds_h', 'dds_nt', 'opp_game', 'deal_count', 'technique_flags'
   ];
 
   await parquetRead({
@@ -86,6 +88,7 @@ export async function loadOlapDataset(source: string | ArrayBuffer): Promise<Ola
       cols.dds_nt = new Uint8Array(n);
       cols.opp_game = new Uint8Array(n);
       cols.deal_count = new Uint32Array(n);
+      cols.technique_flags = new Uint16Array(n);
 
       if (n > 0) {
         const isArr = Array.isArray(data[0]);
@@ -106,6 +109,7 @@ export async function loadOlapDataset(source: string | ArrayBuffer): Promise<Ola
             cols.dds_nt![i] = row[11];
             cols.opp_game![i] = row[12];
             cols.deal_count![i] = row[13];
+            cols.technique_flags![i] = row[14] ?? 0;
           } else {
             const r = row as any;
             cols.opener_hcp![i] = r.opener_hcp;
@@ -122,6 +126,7 @@ export async function loadOlapDataset(source: string | ArrayBuffer): Promise<Ola
             cols.dds_nt![i] = r.dds_nt;
             cols.opp_game![i] = r.opp_game;
             cols.deal_count![i] = r.deal_count;
+            cols.technique_flags![i] = r.technique_flags ?? 0;
           }
         }
       }
@@ -155,13 +160,18 @@ export function runBridgeQuery(db: OlapColumns, filter: BridgeFilter): QueryResu
 
   const {
     length, opener_hcp, spades, hearts, clubs, diamonds, conv_flags,
-    responder_hcp, spade_fit, heart_fit, dds_s, dds_h, dds_nt, opp_game, deal_count
+    responder_hcp, spade_fit, heart_fit, dds_s, dds_h, dds_nt, opp_game, deal_count, technique_flags
   } = db;
 
   for (let i = 0; i < length; i++) {
     // 1. Convention bitmask check
     if (filter.convMask !== undefined && filter.convMask > 0) {
       if ((conv_flags[i] & filter.convMask) === 0) continue;
+    }
+
+    // Technique bitmask check
+    if (filter.techniqueMask !== undefined && filter.techniqueMask > 0 && technique_flags) {
+      if ((technique_flags[i] & filter.techniqueMask) === 0) continue;
     }
 
     // 2. Opener HCP

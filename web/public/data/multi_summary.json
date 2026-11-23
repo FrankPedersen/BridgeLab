@@ -1,59 +1,82 @@
 {
-  "totalDeals": 9811,
-  "pct4H": 44.65,
-  "pct4S": 43.25,
-  "pct3NT": 45.43,
-  "pctSlam": 31.84,
-  "pctOppGame": 14.82,
+  "totalDeals": 4993,
+  "pct4H": 43.58,
+  "pct4S": 42.38,
+  "pct3NT": 41.84,
+  "pctSlam": 29.86,
+  "pctOppGame": 15.34,
   "distH": [
-    0.11,
-    0.39,
-    1.03,
-    2.66,
-    4.16,
-    5.86,
-    8.98,
-    9.0,
-    12.33,
-    10.82,
-    14.08,
+    0.08,
+    0.44,
+    0.88,
+    2.94,
+    4.25,
+    6.21,
+    8.79,
+    9.15,
+    12.78,
+    10.9,
+    13.98,
     14.34,
-    9.82,
-    6.42
+    9.51,
+    5.75
   ],
   "distS": [
     0.16,
-    0.44,
-    0.94,
-    2.82,
-    4.68,
-    6.23,
-    8.96,
-    9.56,
-    11.43,
-    11.54,
-    13.15,
-    13.52,
-    10.02,
-    6.56
+    0.42,
+    0.84,
+    2.96,
+    4.61,
+    6.73,
+    9.17,
+    9.73,
+    11.76,
+    11.24,
+    13.68,
+    13.36,
+    8.87,
+    6.47
   ],
   "distNT": [
     0.0,
     0.0,
     0.0,
-    0.22,
-    1.51,
-    2.98,
-    11.04,
-    19.45,
-    19.38,
-    19.42,
-    15.74,
-    7.04,
-    2.44,
-    0.8
+    0.28,
+    1.64,
+    3.2,
+    12.1,
+    20.85,
+    20.09,
+    18.29,
+    14.32,
+    6.53,
+    2.18,
+    0.52
   ],
   "sample_deals": [
+    {
+      "deal_id": 193,
+      "opener_hcp": 9,
+      "spades": 6,
+      "hearts": 1,
+      "diamonds": 3,
+      "clubs": 3,
+      "conv_flags": 10,
+      "dds_s": 13,
+      "dds_h": 6,
+      "dds_d": 5,
+      "dds_c": 9,
+      "dds_nt": 9,
+      "technique_flags": 33,
+      "gemini_note": {
+        "techniques": [
+          "Squeeze",
+          "Morton's Fork"
+        ],
+        "critical_trick": 6,
+        "summary_da": "Kør spar-farven i bund; Øst kommer i skvis i hjerter og ruder i stik 11. Spil mod hjerter-gaffelen (Morton's Fork): Går modstanderen op med Kongen, etableres stik; dukker de, vinder ti-eren."
+      }
+    },
     {
       "deal_id": 97,
       "opener_hcp": 7,
@@ -66,7 +89,37 @@
       "dds_h": 12,
       "dds_d": 12,
       "dds_c": 10,
-      "dds_nt": 10
+      "dds_nt": 10,
+      "technique_flags": 1,
+      "gemini_note": {
+        "techniques": [
+          "Squeeze"
+        ],
+        "critical_trick": 11,
+        "summary_da": "Kør ruder-farven i bund; Vest kommer i skvis i hjerter og klør i stik 11."
+      }
+    },
+    {
+      "deal_id": 362,
+      "opener_hcp": 7,
+      "spades": 6,
+      "hearts": 2,
+      "diamonds": 3,
+      "clubs": 2,
+      "conv_flags": 10,
+      "dds_s": 11,
+      "dds_h": 2,
+      "dds_d": 8,
+      "dds_c": 8,
+      "dds_nt": 7,
+      "technique_flags": 1,
+      "gemini_note": {
+        "techniques": [
+          "Squeeze"
+        ],
+        "critical_trick": 11,
+        "summary_da": "Kør klør-farven i bund; Vest kommer i skvis i spar og hjerter i stik 11."
+      }
     },
     {
       "deal_id": 142,
@@ -80,21 +133,8 @@
       "dds_h": 5,
       "dds_d": 5,
       "dds_c": 10,
-      "dds_nt": 8
-    },
-    {
-      "deal_id": 193,
-      "opener_hcp": 9,
-      "spades": 6,
-      "hearts": 1,
-      "diamonds": 3,
-      "clubs": 3,
-      "conv_flags": 10,
-      "dds_s": 13,
-      "dds_h": 6,
-      "dds_d": 5,
-      "dds_c": 9,
-      "dds_nt": 9
+      "dds_nt": 8,
+      "technique_flags": 0
     },
     {
       "deal_id": 213,
@@ -108,7 +148,8 @@
       "dds_h": 10,
       "dds_d": 6,
       "dds_c": 4,
-      "dds_nt": 5
+      "dds_nt": 5,
+      "technique_flags": 0
     },
     {
       "deal_id": 262,
@@ -122,7 +163,23 @@
       "dds_h": 9,
       "dds_d": 7,
       "dds_c": 6,
-      "dds_nt": 6
+      "dds_nt": 6,
+      "technique_flags": 0
+    },
+    {
+      "deal_id": 359,
+      "opener_hcp": 8,
+      "spades": 6,
+      "hearts": 2,
+      "diamonds": 2,
+      "clubs": 3,
+      "conv_flags": 10,
+      "dds_s": 12,
+      "dds_h": 11,
+      "dds_d": 6,
+      "dds_c": 4,
+      "dds_nt": 9,
+      "technique_flags": 0
     }
   ]
 }

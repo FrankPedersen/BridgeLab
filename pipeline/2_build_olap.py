@@ -1,71 +1,95 @@
 """
 2_build_olap.py - Pre-aggregated OLAP Table Generation
-Reads master_dds.parquet, groups by all analytical dimensions,
-and exports compact bridge_olap.parquet with deal_count (uint32).
+Reads raw parquet chunks using DuckDB, groups by all 14 analytical dimensions
+(including technique_flags), and exports compact bridge_olap.parquet with deal_count (uint32).
+Appends technique_flags at index 14 for 100% backwards compatibility with column indices 0..13.
 """
 
 import sys
+import time
+import shutil
 from pathlib import Path
-import pyarrow as pa
+import duckdb
 import pyarrow.parquet as pq
-import pyarrow.compute as pc
+
+
+def safe_copy(src: Path, dst: Path):
+    try:
+        shutil.copy2(src, dst)
+    except OSError:
+        with open(src, "rb") as f_in, open(dst, "wb") as f_out:
+            f_out.write(f_in.read())
 
 
 def main():
-    pipeline_dir = Path(__file__).parent
-    input_file = pipeline_dir / "output" / "master_dds.parquet"
-    output_file = pipeline_dir / "output" / "bridge_olap.parquet"
+    pipeline_dir = Path(__file__).parent.resolve()
+    chunks_dir = pipeline_dir / "output" / "raw_chunks"
+    output_olap_file = pipeline_dir / "output" / "bridge_olap.parquet"
+    web_data_dir = pipeline_dir.parent / "web" / "public" / "data"
+    web_data_dir.mkdir(parents=True, exist_ok=True)
 
-    if not input_file.exists():
-        print(f"Error: {input_file} does not exist. Run 1_generate_dds.py first.")
+    chunk_files = list(chunks_dir.glob("*.parquet"))
+    if not chunk_files:
+        print(f"Error: No raw chunk files found in {chunks_dir}. Run 1_generate_dds.py first.")
         sys.exit(1)
 
-    print(f"=== Building OLAP Cube: {output_file} ===")
-    print(f"Reading master dataset: {input_file} ...")
-    table = pq.read_table(input_file)
-    print(f"Loaded {table.num_rows:,} raw deals.")
+    print(f"=== Building Pre-Aggregated OLAP Cube: {output_olap_file.name} ===")
+    print(f"Scanning {len(chunk_files)} raw chunks in {chunks_dir} ...")
 
-    group_keys = [
-        'opener_hcp', 'spades', 'hearts', 'diamonds', 'clubs',
-        'conv_flags', 'responder_hcp', 'spade_fit', 'heart_fit',
-        'dds_s', 'dds_h', 'dds_nt', 'opp_game'
-    ]
+    t0 = time.time()
+    chunks_pattern = str(chunks_dir / "*.parquet").replace("\\", "/")
+    output_path_str = str(output_olap_file).replace("\\", "/")
 
-    print("Grouping and aggregating deal counts...")
-    grouped = table.group_by(group_keys).aggregate([('deal_id', 'count')])
+    # DuckDB streaming aggregation directly into ZSTD-compressed Parquet
+    query = f"""
+    COPY (
+        SELECT
+            opener_hcp::UTINYINT AS opener_hcp,
+            spades::UTINYINT AS spades,
+            hearts::UTINYINT AS hearts,
+            diamonds::UTINYINT AS diamonds,
+            clubs::UTINYINT AS clubs,
+            conv_flags::UTINYINT AS conv_flags,
+            responder_hcp::UTINYINT AS responder_hcp,
+            spade_fit::UTINYINT AS spade_fit,
+            heart_fit::UTINYINT AS heart_fit,
+            dds_s::UTINYINT AS dds_s,
+            dds_h::UTINYINT AS dds_h,
+            dds_nt::UTINYINT AS dds_nt,
+            opp_game::UTINYINT AS opp_game,
+            COUNT(*)::UINTEGER AS deal_count,
+            technique_flags::USMALLINT AS technique_flags
+        FROM '{chunks_pattern}'
+        GROUP BY
+            opener_hcp, spades, hearts, diamonds, clubs,
+            conv_flags, responder_hcp, spade_fit, heart_fit,
+            dds_s, dds_h, dds_nt, opp_game, technique_flags
+        ORDER BY opener_hcp ASC, conv_flags ASC
+    ) TO '{output_path_str}' (FORMAT PARQUET, COMPRESSION SNAPPY)
+    """
 
-    # Rename deal_id_count to deal_count
-    schema_fields = []
-    arrays = []
+    duckdb.sql(query)
+    elapsed = time.time() - t0
 
-    for name in group_keys:
-        schema_fields.append((name, pa.uint8()))
-        arrays.append(pc.cast(grouped.column(name), pa.uint8()))
+    # Also copy to web/public/data/ for direct local development and GitHub Pages build
+    safe_copy(output_olap_file, web_data_dir / "bridge_olap.parquet")
 
-    # Deal count column
-    schema_fields.append(('deal_count', pa.uint32()))
-    count_col = grouped.column('deal_id_count')
-    arrays.append(pc.cast(count_col, pa.uint32()))
+    # Inspect and validate generated OLAP dataset
+    table = pq.read_table(output_olap_file)
+    olap_rows = table.num_rows
+    total_deals = sum(table.column('deal_count').to_pylist())
+    file_size_kb = output_olap_file.stat().st_size / 1024
+    file_size_mb = file_size_kb / 1024
 
-    target_schema = pa.schema(schema_fields)
-    olap_table = pa.Table.from_arrays(arrays, schema=target_schema)
+    compression_pct = (1.0 - (olap_rows / total_deals)) * 100 if total_deals > 0 else 0
 
-    # Sort table for optimal parquet compression and scan locality
-    # (opener_hcp, spades, hearts)
-    sort_indices = pc.sort_indices(olap_table, sort_keys=[('opener_hcp', 'ascending'), ('conv_flags', 'ascending')])
-    olap_table_sorted = pc.take(olap_table, sort_indices)
-
-    pq.write_table(olap_table_sorted, output_file, compression='snappy')
-
-    orig_rows = table.num_rows
-    olap_rows = olap_table.num_rows
-    compression_ratio = (1.0 - (olap_rows / orig_rows)) * 100 if orig_rows > 0 else 0
-    file_size_kb = output_file.stat().st_size / 1024
-
-    print(f"OLAP aggregation complete:")
-    print(f"  Input deals:       {orig_rows:,}")
-    print(f"  OLAP rows:         {olap_rows:,} (-{compression_ratio:.1f}% reduction)")
-    print(f"  Output Parquet:    {output_file} ({file_size_kb:.1f} KB)")
+    print(f"[OK] OLAP Aggregation Completed in {elapsed:.2f}s:")
+    print(f"  Total input deals: {total_deals:,}")
+    print(f"  OLAP cube rows:    {olap_rows:,} (-{compression_pct:.1f}% reduction)")
+    print(f"  File size:         {file_size_mb:.2f} MB ({file_size_kb:.1f} KB)")
+    print(f"  Output path:       {output_olap_file}")
+    print(f"  Web public path:   {web_data_dir / 'bridge_olap.parquet'}")
+    print(f"  Columns:           {table.num_columns} (Indices 0-13 preserved, technique_flags at index 14)")
 
 
 if __name__ == "__main__":

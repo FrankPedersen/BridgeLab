@@ -112,6 +112,8 @@ export const ConventionView: React.FC<ConventionViewProps> = ({
         ddsD: s.dds_d,
         ddsC: s.dds_c,
         ddsNt: s.dds_nt,
+        techniqueFlags: s.technique_flags,
+        geminiNote: s.gemini_note,
       }));
     }
     return [];

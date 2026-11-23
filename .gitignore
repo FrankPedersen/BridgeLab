@@ -15,6 +15,7 @@ venv/
 
 # Pipeline temporary/large master files
 pipeline/output/master_dds.parquet
+pipeline/output/raw_chunks/
 
 # Logs & OS
 *.log

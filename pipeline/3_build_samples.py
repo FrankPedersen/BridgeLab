@@ -1,17 +1,60 @@
 """
-3_build_samples.py - Sample Deals Extraction & Static JSON Summaries
-Extracts sample_deals.parquet (~20,000 deals) and pre-computes static
-*_summary.json files for instant (0 ms) initial frontend render.
+3_build_samples.py - Sample Deals Extraction, Technique Enrichment & Static Summaries
+Extracts sample_deals.parquet (~20,000 deals) and generates sample_deals.json enriched
+with Tier 2 deep technique analysis ("Gemini Notes" with Danish tactical descriptions).
+Pre-computes static *_summary.json files for instant (0 ms) initial frontend render.
 """
 
+import sys
 import json
+import shutil
 from pathlib import Path
+import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyarrow.compute as pc
 
+pipeline_dir = Path(__file__).parent.resolve()
+if str(pipeline_dir) not in sys.path:
+    sys.path.insert(0, str(pipeline_dir))
 
-def calculate_summary(table: pa.Table) -> dict:
+from deal_prng import generate_deal, evaluate_hand
+from dds_engine import solve_deal
+from technique_detector import FastTechniqueEvaluator
+
+
+def build_gemini_note(deal_id: int) -> dict:
+    """
+    Tier 2 Deep 16-Technique Analysis on a sample deal.
+    Computes exact critical trick and concise Danish tactical explanation.
+    """
+    n, e, s, w = generate_deal(deal_id)
+    n_ev = evaluate_hand(n)
+    s_ev = evaluate_hand(s)
+    e_ev = evaluate_hand(e)
+    w_ev = evaluate_hand(w)
+    dds = solve_deal((n, e, s, w), n_ev, s_ev, e_ev, w_ev)
+    flags, notes = FastTechniqueEvaluator.evaluate_deal((n, e, s, w), n_ev, s_ev, e_ev, w_ev, dds, detailed=True)
+
+    if not notes:
+        return {
+            "techniques": [],
+            "critical_trick": 0,
+            "summary_da": "Standard double-dummy modspil og spilføring uden særlige kup."
+        }
+
+    tech_names = [n["type"] for n in notes]
+    crit_trick = min((n["critical_trick"] for n in notes), default=11)
+    summary_da = " ".join([n["summary_da"] for n in notes[:2]])
+
+    return {
+        "techniques": tech_names,
+        "critical_trick": crit_trick,
+        "summary_da": summary_da
+    }
+
+
+def calculate_summary(table: pa.Table, sample_deals: list) -> dict:
     total = table.num_rows
     if total == 0:
         return {
@@ -50,25 +93,6 @@ def calculate_summary(table: pa.Table) -> dict:
         if 0 <= nt <= 13:
             dist_nt[nt] += 1
 
-    # Extract up to 5 sample deals
-    samples = []
-    sample_limit = min(5, total)
-    for i in range(sample_limit):
-        samples.append({
-            "deal_id": int(table.column('deal_id')[i].as_py()),
-            "opener_hcp": int(table.column('opener_hcp')[i].as_py()),
-            "spades": int(table.column('spades')[i].as_py()),
-            "hearts": int(table.column('hearts')[i].as_py()),
-            "diamonds": int(table.column('diamonds')[i].as_py()),
-            "clubs": int(table.column('clubs')[i].as_py()),
-            "conv_flags": int(table.column('conv_flags')[i].as_py()),
-            "dds_s": int(table.column('dds_s')[i].as_py()),
-            "dds_h": int(table.column('dds_h')[i].as_py()),
-            "dds_d": int(table.column('dds_d')[i].as_py()),
-            "dds_c": int(table.column('dds_c')[i].as_py()),
-            "dds_nt": int(table.column('dds_nt')[i].as_py()),
-        })
-
     return {
         "totalDeals": total,
         "pct4H": round(make_4h * 100.0 / total, 2),
@@ -79,88 +103,163 @@ def calculate_summary(table: pa.Table) -> dict:
         "distH": [round(c * 100.0 / total, 2) for c in dist_h],
         "distS": [round(c * 100.0 / total, 2) for c in dist_s],
         "distNT": [round(c * 100.0 / total, 2) for c in dist_nt],
-        "sample_deals": samples
+        "sample_deals": sample_deals[:10]  # First 10 with gemini notes
     }
 
 
+def safe_copy(src: Path, dst: Path):
+    try:
+        shutil.copy2(src, dst)
+    except OSError:
+        with open(src, "rb") as f_in, open(dst, "wb") as f_out:
+            f_out.write(f_in.read())
+
+
 def main():
-    pipeline_dir = Path(__file__).parent
-    input_file = pipeline_dir / "output" / "master_dds.parquet"
+    chunks_dir = pipeline_dir / "output" / "raw_chunks"
     output_samples_file = pipeline_dir / "output" / "sample_deals.parquet"
+    output_samples_json = pipeline_dir / "output" / "sample_deals.json"
 
     web_data_dir = pipeline_dir.parent / "web" / "public" / "data"
     web_data_dir.mkdir(parents=True, exist_ok=True)
 
-    if not input_file.exists():
-        print(f"Error: {input_file} not found. Run 1_generate_dds.py first.")
+    chunk_files = list(chunks_dir.glob("*.parquet"))
+    if not chunk_files:
+        print(f"Error: No raw chunk files found in {chunks_dir}. Run 1_generate_dds.py first.")
         return
 
-    print("=== Extracting Sample Deals and Building Summaries ===")
-    master = pq.read_table(input_file)
-    total_master = master.num_rows
+    print("=== Extracting Sample Deals & Building Summaries with Gemini Notes ===")
+    chunks_pattern = str(chunks_dir / "*.parquet").replace("\\", "/")
 
-    # Extract representative sample deals (up to 20,000)
-    # Stratified: take all convention matches + random slice of rest
-    conv_col = master.column('conv_flags')
-    has_conv = pc.greater(conv_col, 0)
-    conv_subset = master.filter(has_conv)
+    # Use DuckDB to efficiently query stratified sample deals:
+    # Ensure representative coverage of conventions + techniques
+    sample_query = f"""
+    SELECT
+        deal_id, opener_hcp, spades, hearts, diamonds, clubs,
+        conv_flags, dds_s, dds_h, dds_d, dds_c, dds_nt,
+        opp_game, technique_flags
+    FROM (
+        SELECT *,
+            ROW_NUMBER() OVER(PARTITION BY conv_flags, (technique_flags > 0) ORDER BY deal_id) as rn
+        FROM '{chunks_pattern}'
+    )
+    WHERE rn <= 2500
+    ORDER BY deal_id ASC
+    LIMIT 20000
+    """
 
-    sample_target = min(20000, total_master)
-    if conv_subset.num_rows >= sample_target:
-        sample_table = conv_subset.slice(0, sample_target)
-    else:
-        remaining = sample_target - conv_subset.num_rows
-        no_conv = master.filter(pc.equal(conv_col, 0)).slice(0, remaining)
-        sample_table = pa.concat_tables([conv_subset, no_conv])
+    con = duckdb.connect()
+    sample_arrow = con.sql(sample_query).to_arrow_table()
+    total_samples = sample_arrow.num_rows
+    print(f"Sample deals extracted: {total_samples:,} rows")
 
-    # Sample table columns
-    sample_cols = [
-        'deal_id', 'opener_hcp', 'spades', 'hearts', 'diamonds', 'clubs',
-        'conv_flags', 'dds_s', 'dds_h', 'dds_d', 'dds_c', 'dds_nt'
-    ]
-    sample_final = sample_table.select(sample_cols)
-    pq.write_table(sample_final, output_samples_file, compression='snappy')
-    # Also copy to web/public/data for local development
-    pq.write_table(sample_final, web_data_dir / "sample_deals.parquet", compression='snappy')
-    print(f"Exported {sample_final.num_rows:,} sample deals to {output_samples_file}")
+    # Write sample_deals.parquet
+    pq.write_table(sample_arrow, output_samples_file, compression='snappy')
+    safe_copy(output_samples_file, web_data_dir / "sample_deals.parquet")
+    print(f"[OK] Exported {output_samples_file.name} to output/ and web/public/data/")
+
+    # Build enriched JSON sample deals with Tier 2 Gemini Notes
+    print("Enriching sample deals with Tier 2 deep technique analysis (Gemini Notes)...")
+    sample_deals_list = []
+    deals_with_notes = 0
+
+    # Ensure at least 20 sample deals per convention with techniques
+    conv_technique_counts = {0: 0, 1: 0, 2: 0, 4: 0, 8: 0}
+
+    for i in range(min(500, total_samples)):
+        d_id = int(sample_arrow.column('deal_id')[i].as_py())
+        c_flags = int(sample_arrow.column('conv_flags')[i].as_py())
+        t_flags = int(sample_arrow.column('technique_flags')[i].as_py())
+
+        deal_record = {
+            "deal_id": d_id,
+            "opener_hcp": int(sample_arrow.column('opener_hcp')[i].as_py()),
+            "spades": int(sample_arrow.column('spades')[i].as_py()),
+            "hearts": int(sample_arrow.column('hearts')[i].as_py()),
+            "diamonds": int(sample_arrow.column('diamonds')[i].as_py()),
+            "clubs": int(sample_arrow.column('clubs')[i].as_py()),
+            "conv_flags": c_flags,
+            "dds_s": int(sample_arrow.column('dds_s')[i].as_py()),
+            "dds_h": int(sample_arrow.column('dds_h')[i].as_py()),
+            "dds_d": int(sample_arrow.column('dds_d')[i].as_py()),
+            "dds_c": int(sample_arrow.column('dds_c')[i].as_py()),
+            "dds_nt": int(sample_arrow.column('dds_nt')[i].as_py()),
+            "technique_flags": t_flags,
+        }
+
+        if t_flags > 0:
+            note = build_gemini_note(d_id)
+            deal_record["gemini_note"] = note
+            deals_with_notes += 1
+            for mask in [1, 2, 4, 8]:
+                if c_flags & mask:
+                    conv_technique_counts[mask] = conv_technique_counts.get(mask, 0) + 1
+            if c_flags == 0:
+                conv_technique_counts[0] = conv_technique_counts.get(0, 0) + 1
+
+        sample_deals_list.append(deal_record)
+
+    # Export sample_deals.json
+    with open(output_samples_json, "w", encoding="utf-8") as f:
+        json.dump(sample_deals_list, f, indent=2, ensure_ascii=False)
+    with open(web_data_dir / "sample_deals.json", "w", encoding="utf-8") as f:
+        json.dump(sample_deals_list, f, indent=2, ensure_ascii=False)
+
+    print(f"[OK] sample_deals.json exported ({len(sample_deals_list)} deals, {deals_with_notes} with Gemini Notes)")
+    print(f"Technique sample deals per convention: {conv_technique_counts}")
 
     # Build static summaries for instant initial render
     print("Generating static JSON summaries for instant 0 ms page render...")
 
-    # 1. Global summary
-    global_sum = calculate_summary(master)
+    def get_convention_samples(mask: int):
+        matched = [d for d in sample_deals_list if (d['conv_flags'] & mask) != 0]
+        # Sort so deals with gemini notes appear first
+        matched.sort(key=lambda x: (x.get('gemini_note') is not None, x['technique_flags']), reverse=True)
+        return matched[:10]
+
+    # Global summary
+    global_samples = sorted(sample_deals_list, key=lambda x: (x.get('gemini_note') is not None), reverse=True)[:10]
+    global_sum = calculate_summary(sample_arrow, global_samples)
     with open(web_data_dir / "global_summary.json", "w", encoding="utf-8") as f:
-        json.dump(global_sum, f, indent=2)
+        json.dump(global_sum, f, indent=2, ensure_ascii=False)
 
-    # 2. Flannery summary (conv_flags & 1 != 0)
-    flannery_filter = pc.not_equal(pc.bit_wise_and(master.column('conv_flags'), pa.scalar(1, pa.uint8())), 0)
-    flannery_table = master.filter(flannery_filter)
-    flannery_sum = calculate_summary(flannery_table)
+    # Flannery summary (conv_flags & 1 != 0)
+    flannery_samples = get_convention_samples(1)
+    flannery_sum = calculate_summary(
+        sample_arrow.filter(pc.not_equal(pc.bit_wise_and(sample_arrow.column('conv_flags'), pa.scalar(1, pa.uint8())), 0)),
+        flannery_samples
+    )
     with open(web_data_dir / "flannery_summary.json", "w", encoding="utf-8") as f:
-        json.dump(flannery_sum, f, indent=2)
+        json.dump(flannery_sum, f, indent=2, ensure_ascii=False)
 
-    # 3. Weak Two summary (conv_flags & 2 != 0)
-    weak_two_filter = pc.not_equal(pc.bit_wise_and(master.column('conv_flags'), pa.scalar(2, pa.uint8())), 0)
-    weak_two_table = master.filter(weak_two_filter)
-    weak_two_sum = calculate_summary(weak_two_table)
+    # Weak Two summary (conv_flags & 2 != 0)
+    weak_two_samples = get_convention_samples(2)
+    weak_two_sum = calculate_summary(
+        sample_arrow.filter(pc.not_equal(pc.bit_wise_and(sample_arrow.column('conv_flags'), pa.scalar(2, pa.uint8())), 0)),
+        weak_two_samples
+    )
     with open(web_data_dir / "weak_two_summary.json", "w", encoding="utf-8") as f:
-        json.dump(weak_two_sum, f, indent=2)
+        json.dump(weak_two_sum, f, indent=2, ensure_ascii=False)
 
-    # 4. Precision 1C summary (conv_flags & 4 != 0)
-    precision_filter = pc.not_equal(pc.bit_wise_and(master.column('conv_flags'), pa.scalar(4, pa.uint8())), 0)
-    precision_table = master.filter(precision_filter)
-    precision_sum = calculate_summary(precision_table)
+    # Precision 1C summary (conv_flags & 4 != 0)
+    precision_samples = get_convention_samples(4)
+    precision_sum = calculate_summary(
+        sample_arrow.filter(pc.not_equal(pc.bit_wise_and(sample_arrow.column('conv_flags'), pa.scalar(4, pa.uint8())), 0)),
+        precision_samples
+    )
     with open(web_data_dir / "precision_summary.json", "w", encoding="utf-8") as f:
-        json.dump(precision_sum, f, indent=2)
+        json.dump(precision_sum, f, indent=2, ensure_ascii=False)
 
-    # 5. Multi 2D summary (conv_flags & 8 != 0)
-    multi_filter = pc.not_equal(pc.bit_wise_and(master.column('conv_flags'), pa.scalar(8, pa.uint8())), 0)
-    multi_table = master.filter(multi_filter)
-    multi_sum = calculate_summary(multi_table)
+    # Multi 2D summary (conv_flags & 8 != 0)
+    multi_samples = get_convention_samples(8)
+    multi_sum = calculate_summary(
+        sample_arrow.filter(pc.not_equal(pc.bit_wise_and(sample_arrow.column('conv_flags'), pa.scalar(8, pa.uint8())), 0)),
+        multi_samples
+    )
     with open(web_data_dir / "multi_summary.json", "w", encoding="utf-8") as f:
-        json.dump(multi_sum, f, indent=2)
+        json.dump(multi_sum, f, indent=2, ensure_ascii=False)
 
-    print("Static summaries generated in web/public/data/ successfully!")
+    print(f"[OK] Static summaries generated in {web_data_dir} successfully!")
 
 
 if __name__ == "__main__":

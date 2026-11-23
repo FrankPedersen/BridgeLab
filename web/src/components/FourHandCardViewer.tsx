@@ -231,6 +231,28 @@ export const FourHandCardViewer: React.FC<FourHandCardViewerProps> = ({ sampleDe
           </div>
         </div>
       </div>
+
+      {/* Gemini Notes & Taktisk Analyse */}
+      {activeRecord.geminiNote && activeRecord.geminiNote.techniques && activeRecord.geminiNote.techniques.length > 0 && (
+        <div className="mt-5 p-4 rounded-xl bg-gradient-to-r from-cyan-950/70 via-slate-900 to-indigo-950/70 border border-cyan-700/60 text-xs shadow-lg animate-in fade-in duration-300">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-2 border-b border-cyan-800/40">
+            <div className="flex items-center space-x-2">
+              <span className="text-base">🎯</span>
+              <span className="font-extrabold text-cyan-300 uppercase tracking-wider text-[11px]">
+                Gemini Notes: {activeRecord.geminiNote.techniques.join(" • ")}
+              </span>
+            </div>
+            {activeRecord.geminiNote.critical_trick > 0 && (
+              <span className="text-[11px] font-mono text-cyan-300 bg-cyan-900/60 px-2.5 py-0.5 rounded-full border border-cyan-700/80 font-semibold">
+                Kritisk stik #{activeRecord.geminiNote.critical_trick}
+              </span>
+            )}
+          </div>
+          <p className="text-slate-200 leading-relaxed font-normal text-xs sm:text-sm">
+            {activeRecord.geminiNote.summary_da}
+          </p>
+        </div>
+      )}
     </div>
   );
 };
