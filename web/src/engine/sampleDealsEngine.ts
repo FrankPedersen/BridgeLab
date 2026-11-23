@@ -1,5 +1,5 @@
 import { parquetRead } from 'hyparquet';
-import { BridgeFilter } from './bridgeQueryEngine';
+import type { BridgeFilter, GeminiNote } from '../types/bridge';
 
 export interface SampleDealRecord {
   dealId: number;
@@ -15,11 +15,7 @@ export interface SampleDealRecord {
   ddsC: number;
   ddsNt: number;
   techniqueFlags?: number;
-  geminiNote?: {
-    techniques: string[];
-    critical_trick: number;
-    summary_da: string;
-  };
+  geminiNote?: GeminiNote;
 }
 
 export interface SampleDealsDataset {
@@ -37,6 +33,7 @@ export interface SampleDealsDataset {
   dds_c: Uint8Array;
   dds_nt: Uint8Array;
   technique_flags?: Uint16Array;
+  notesMap?: Map<number, GeminiNote>;
 }
 
 /**
@@ -119,21 +116,60 @@ export async function loadSampleDeals(source: string | ArrayBuffer): Promise<Sam
     },
   });
 
+  const notesMap = new Map<number, GeminiNote>();
+  if (typeof source === 'string') {
+    try {
+      const jsonUrl = source.replace(/\.parquet(\?.*)?$/, '.json$1');
+      const res = await fetch(jsonUrl);
+      if (res.ok) {
+        const items = await res.json();
+        for (const item of items) {
+          if (item.deal_id !== undefined && item.gemini_note) {
+            notesMap.set(item.deal_id, item.gemini_note);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[sampleDealsEngine] Could not load sample_deals.json from source url:', e);
+    }
+  }
+
+  // Fallback to local public data if notesMap is empty
+  if (notesMap.size === 0) {
+    try {
+      const localJson = `${import.meta.env.BASE_URL}data/sample_deals.json`;
+      const res = await fetch(localJson);
+      if (res.ok) {
+        const items = await res.json();
+        for (const item of items) {
+          if (item.deal_id !== undefined && item.gemini_note) {
+            notesMap.set(item.deal_id, item.gemini_note);
+          }
+        }
+      }
+    } catch {
+      // Ignore fallback error
+    }
+  }
+  ds.notesMap = notesMap;
+
   return ds as SampleDealsDataset;
 }
 
 /**
  * Fast search through sample deals for rows matching the current filter.
+ * Prioritizes deals with Gemini Notes when techniqueMask > 0 or in general.
  */
 export function queryMatchingSamples(
   dataset: SampleDealsDataset,
   filter: BridgeFilter,
   limit: number = 5
 ): SampleDealRecord[] {
-  const matches: SampleDealRecord[] = [];
+  const matchesWithNotes: SampleDealRecord[] = [];
+  const matchesWithoutNotes: SampleDealRecord[] = [];
   const {
     length, deal_id, opener_hcp, spades, hearts, diamonds, clubs, conv_flags,
-    dds_s, dds_h, dds_d, dds_c, dds_nt, technique_flags
+    dds_s, dds_h, dds_d, dds_c, dds_nt, technique_flags, notesMap
   } = dataset;
 
   for (let i = 0; i < length; i++) {
@@ -143,8 +179,13 @@ export function queryMatchingSamples(
     }
 
     // Technique check
-    if (filter.techniqueMask !== undefined && filter.techniqueMask > 0 && technique_flags) {
-      if ((technique_flags[i] & filter.techniqueMask) === 0) continue;
+    if (filter.techniqueMask && filter.techniqueMask > 0 && technique_flags) {
+      const rowTech = technique_flags[i];
+      if (filter.techniqueMatchMode === 'ALL') {
+        if ((rowTech & filter.techniqueMask) !== filter.techniqueMask) continue;
+      } else {
+        if ((rowTech & filter.techniqueMask) === 0) continue;
+      }
     }
 
     // 2. Opener HCP
@@ -158,8 +199,11 @@ export function queryMatchingSamples(
     if (filter.exactSpades !== undefined && spades[i] !== filter.exactSpades) continue;
     if (filter.exactHearts !== undefined && hearts[i] !== filter.exactHearts) continue;
 
-    matches.push({
-      dealId: deal_id[i],
+    const id = deal_id[i];
+    const note = notesMap?.get(id);
+
+    const record: SampleDealRecord = {
+      dealId: id,
       openerHcp: opener_hcp[i],
       spades: spades[i],
       hearts: hearts[i],
@@ -172,12 +216,19 @@ export function queryMatchingSamples(
       ddsC: dds_c[i],
       ddsNt: dds_nt[i],
       techniqueFlags: technique_flags ? technique_flags[i] : 0,
-    });
+      geminiNote: note,
+    };
 
-    if (matches.length >= limit) {
+    if (note && note.techniques && note.techniques.length > 0) {
+      matchesWithNotes.push(record);
+    } else {
+      matchesWithoutNotes.push(record);
+    }
+
+    if (matchesWithNotes.length >= limit) {
       break;
     }
   }
 
-  return matches;
+  return [...matchesWithNotes, ...matchesWithoutNotes].slice(0, limit);
 }

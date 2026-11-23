@@ -1,4 +1,7 @@
 import { parquetRead } from 'hyparquet';
+import type { BridgeFilter } from '../types/bridge';
+
+export type { BridgeFilter };
 
 export interface OlapColumns {
   length: number;
@@ -16,21 +19,7 @@ export interface OlapColumns {
   dds_nt: Uint8Array;
   opp_game: Uint8Array;
   deal_count: Uint32Array;
-  technique_flags?: Uint16Array;
-}
-
-export interface BridgeFilter {
-  convMask?: number;       // 1 = Flannery, 2 = Weak Two, 4 = Precision 1♣, 8 = Multi 2♦
-  techniqueMask?: number;  // 1 = Squeeze, 2 = Endplay, 4 = Trump Coup, 8 = Vienna, 16 = Scissors, 32 = Morton's Fork, 64 = Intra-Finesse
-  minHcp?: number;
-  maxHcp?: number;
-  exactClubs?: number;
-  exactDiamonds?: number;
-  exactSpades?: number;
-  exactHearts?: number;
-  minMajorFit?: number;
-  minRespHcp?: number;
-  maxRespHcp?: number;
+  technique_flags: Uint16Array;
 }
 
 export interface QueryResult {
@@ -170,8 +159,13 @@ export function runBridgeQuery(db: OlapColumns, filter: BridgeFilter): QueryResu
     }
 
     // Technique bitmask check
-    if (filter.techniqueMask !== undefined && filter.techniqueMask > 0 && technique_flags) {
-      if ((technique_flags[i] & filter.techniqueMask) === 0) continue;
+    if (filter.techniqueMask && filter.techniqueMask > 0 && technique_flags) {
+      const rowTech = technique_flags[i];
+      if (filter.techniqueMatchMode === 'ALL') {
+        if ((rowTech & filter.techniqueMask) !== filter.techniqueMask) continue;
+      } else {
+        if ((rowTech & filter.techniqueMask) === 0) continue;
+      }
     }
 
     // 2. Opener HCP

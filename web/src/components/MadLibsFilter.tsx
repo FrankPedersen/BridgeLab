@@ -41,6 +41,37 @@ export const MadLibsFilter: React.FC<MadLibsFilterProps> = ({
     return 'any';
   })();
 
+  const techniqueValue = (() => {
+    if (!filter.techniqueMask || filter.techniqueMask === 0) return '0';
+    if (filter.techniqueMask === 127) return '127';
+    if (filter.techniqueMask === 1) return '1';
+    if (filter.techniqueMask === 2) return '2';
+    if (filter.techniqueMask === (4 | 8 | 16 | 32)) return 'coups';
+    return 'custom';
+  })();
+
+  const handleTechniqueSelect = (val: string) => {
+    const updated: BridgeFilter = { ...filter };
+    if (val === '0') {
+      delete updated.techniqueMask;
+      delete updated.techniqueMatchMode;
+    } else if (val === '127') {
+      updated.techniqueMask = 127;
+      updated.techniqueMatchMode = 'ANY';
+    } else if (val === '1') {
+      updated.techniqueMask = 1;
+      updated.techniqueMatchMode = 'ANY';
+    } else if (val === '2') {
+      updated.techniqueMask = 2;
+      updated.techniqueMatchMode = 'ANY';
+    } else if (val === 'coups') {
+      updated.techniqueMask = 4 | 8 | 16 | 32;
+      updated.techniqueMatchMode = 'ANY';
+    }
+    console.log('[Filter] Technique selected:', val, updated);
+    onFilterChange(updated);
+  };
+
   const handleConvSelect = (val: number) => {
     const updated: BridgeFilter = {
       ...filter,
@@ -191,6 +222,28 @@ export const MadLibsFilter: React.FC<MadLibsFilterProps> = ({
               <option value="9+">mindst 9-korts majorfit</option>
             </select>
             <ChevronDown className="w-4 h-4 text-rose-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none group-hover:scale-110 transition-transform" />
+          </div>
+
+          <span className="text-slate-400">, spilteknik:</span>
+
+          {/* Technique Dropdown */}
+          <div className="relative inline-block group">
+            <select
+              aria-label="Spilteknik"
+              value={techniqueValue}
+              onChange={(e) => handleTechniqueSelect(e.target.value)}
+              className="appearance-none cursor-pointer bg-amber-950/80 border border-amber-500/50 hover:border-amber-400 text-amber-200 font-semibold px-3 py-1.5 pr-8 rounded-xl shadow-inner focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm sm:text-base transition-all"
+            >
+              <option value="0">alle spilteknikker</option>
+              <option value="127">Enhver avanceret teknik</option>
+              <option value="1">Skvis (Squeeze)</option>
+              <option value="2">Slutspil (Endplay)</option>
+              <option value="coups">Avancerede Coups</option>
+              {techniqueValue === 'custom' && (
+                <option value="custom">Valgte teknikker (aktiv)</option>
+              )}
+            </select>
+            <ChevronDown className="w-4 h-4 text-amber-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none group-hover:scale-110 transition-transform" />
           </div>
         </div>
 
