@@ -5,6 +5,7 @@ import { FlanneryPage } from './pages/FlanneryPage';
 import { WeakTwoPage } from './pages/WeakTwoPage';
 import { PrecisionPage } from './pages/PrecisionPage';
 import { ExplorerPage } from './pages/ExplorerPage';
+import { MultiPage } from './pages/MultiPage';
 import { OlapColumns, loadOlapDataset, runBridgeQuery } from './engine/bridgeQueryEngine';
 import { SampleDealsDataset, loadSampleDeals } from './engine/sampleDealsEngine';
 import { Database, Cpu, ExternalLink } from 'lucide-react';
@@ -18,6 +19,7 @@ export function App() {
     if (path.includes('/flannery')) return '/flannery';
     if (path.includes('/weak-two')) return '/weak-two';
     if (path.includes('/precision')) return '/precision';
+    if (path.includes('/multi')) return '/multi';
     if (path.includes('/explorer')) return '/explorer';
     return '/';
   };
@@ -37,11 +39,12 @@ export function App() {
     flannery?: any;
     weakTwo?: any;
     precision?: any;
+    multi?: any;
   }>({});
 
   const totalDeals = olapDb 
     ? olapDb.deal_count.reduce((a, b) => a + b, 0) 
-    : (summaries.global?.totalDeals ?? 500000);
+    : 0;
 
   // Update hash when navigating
   const navigate = (path: string) => {
@@ -63,17 +66,19 @@ export function App() {
   }, []);
 
   const [dataSource, setDataSource] = useState<'GCS' | 'Local'>('Local');
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // 1. Instant 0 ms Initial Render: Fetch tiny static JSON summaries
   useEffect(() => {
     const loadSummaries = async () => {
       try {
         const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-        const [gRes, fRes, wRes, pRes] = await Promise.allSettled([
+        const [gRes, fRes, wRes, pRes, mRes] = await Promise.allSettled([
           fetch(`${basePath}/data/global_summary.json`).then(r => r.json()),
           fetch(`${basePath}/data/flannery_summary.json`).then(r => r.json()),
           fetch(`${basePath}/data/weak_two_summary.json`).then(r => r.json()),
           fetch(`${basePath}/data/precision_summary.json`).then(r => r.json()),
+          fetch(`${basePath}/data/multi_summary.json`).then(r => r.json()),
         ]);
 
         setSummaries({
@@ -81,6 +86,7 @@ export function App() {
           flannery: fRes.status === 'fulfilled' ? fRes.value : undefined,
           weakTwo: wRes.status === 'fulfilled' ? wRes.value : undefined,
           precision: pRes.status === 'fulfilled' ? pRes.value : undefined,
+          multi: mRes.status === 'fulfilled' ? mRes.value : undefined,
         });
       } catch (e) {
         console.warn('Could not load static summaries:', e);
@@ -106,6 +112,7 @@ export function App() {
         setOlapDb(loadedOlap);
         setSampleDb(loadedSamples);
         setDataSource('GCS');
+        setLoadError(null);
         setIsEngineReady(true);
         console.log(`[DDS Engine] Loaded from GCS: ${loadedOlap.length} OLAP rows and ${loadedSamples.length} sample deals into TypedArrays.`);
       } catch (gcsErr) {
@@ -119,10 +126,13 @@ export function App() {
           setOlapDb(loadedOlap);
           setSampleDb(loadedSamples);
           setDataSource('Local');
+          setLoadError(null);
           setIsEngineReady(true);
           console.log(`[DDS Engine] Loaded from local: ${loadedOlap.length} OLAP rows and ${loadedSamples.length} sample deals into TypedArrays.`);
         } catch (localErr) {
           console.error('[DDS Engine] Fatal error loading Parquet datasets:', localErr);
+          setLoadError('No verified dataset loaded');
+          setIsEngineReady(false);
         }
       }
     };
@@ -155,6 +165,11 @@ export function App() {
 
       {/* Main Content Pages */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {loadError && (
+          <div role="alert" className="mb-6 rounded-xl border border-amber-700/60 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
+            {loadError}
+          </div>
+        )}
         {currentPath === '/' && (
           <HomePage
             onNavigate={navigate}
@@ -193,6 +208,16 @@ export function App() {
           />
         )}
 
+        {currentPath === '/multi' && (
+          <MultiPage
+            olapDb={olapDb}
+            sampleDb={sampleDb}
+            totalDeals={totalDeals}
+            fallbackSummary={summaries.multi}
+            onLatencyUpdate={handleLatencyUpdate}
+          />
+        )}
+
         {currentPath === '/explorer' && (
           <ExplorerPage
             olapDb={olapDb}
@@ -214,7 +239,7 @@ export function App() {
             <div>
               <span className="font-bold text-slate-200">Bridge DDS Explorer</span>
               <p className="text-[11px] text-slate-400">
-                Deterministisk analyseportal med Bo Haglund Double Dummy Solver
+                Deterministisk analyseportal med ægte endplay DDS-beregning
               </p>
             </div>
           </div>

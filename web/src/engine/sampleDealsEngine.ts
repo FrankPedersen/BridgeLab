@@ -1,5 +1,5 @@
 import { parquetRead } from 'hyparquet';
-import type { BridgeFilter, GeminiNote } from '../types/bridge';
+import type { BridgeFilter } from '../types/bridge';
 
 export interface SampleDealRecord {
   dealId: number;
@@ -14,13 +14,12 @@ export interface SampleDealRecord {
   ddsD: number;
   ddsC: number;
   ddsNt: number;
-  techniqueFlags?: number;
-  geminiNote?: GeminiNote;
+  ddsSource: 'endplay_dds';
 }
 
 export interface SampleDealsDataset {
   length: number;
-  deal_id: Float64Array; // safely stores 53-bit integers
+  deal_id: Float64Array;
   opener_hcp: Uint8Array;
   spades: Uint8Array;
   hearts: Uint8Array;
@@ -32,29 +31,17 @@ export interface SampleDealsDataset {
   dds_d: Uint8Array;
   dds_c: Uint8Array;
   dds_nt: Uint8Array;
-  technique_flags?: Uint16Array;
-  notesMap?: Map<number, GeminiNote>;
+  dds_source?: string[];
 }
 
-/**
- * Loads sample_deals.parquet into memory
- */
 export async function loadSampleDeals(source: string | ArrayBuffer): Promise<SampleDealsDataset> {
-  let arrayBuffer: ArrayBuffer;
-  if (typeof source === 'string') {
-    const res = await fetch(source);
-    if (!res.ok) {
-      throw new Error(`Failed to load sample deals from ${source}: ${res.statusText}`);
-    }
-    arrayBuffer = await res.arrayBuffer();
-  } else {
-    arrayBuffer = source;
-  }
-
+  const arrayBuffer = typeof source === 'string'
+    ? await (await fetch(source)).arrayBuffer()
+    : source;
   const ds: Partial<SampleDealsDataset> = {};
   const expectedCols = [
     'deal_id', 'opener_hcp', 'spades', 'hearts', 'diamonds', 'clubs',
-    'conv_flags', 'dds_s', 'dds_h', 'dds_d', 'dds_c', 'dds_nt', 'technique_flags'
+    'conv_flags', 'dds_s', 'dds_h', 'dds_d', 'dds_c', 'dds_nt'
   ];
 
   await parquetRead({
@@ -75,160 +62,56 @@ export async function loadSampleDeals(source: string | ArrayBuffer): Promise<Sam
       ds.dds_d = new Uint8Array(n);
       ds.dds_c = new Uint8Array(n);
       ds.dds_nt = new Uint8Array(n);
-      ds.technique_flags = new Uint16Array(n);
-
-      if (n > 0) {
-        const isArr = Array.isArray(data[0]);
-        for (let i = 0; i < n; i++) {
-          const row = data[i];
-          if (isArr) {
-            ds.deal_id![i] = Number(row[0]);
-            ds.opener_hcp![i] = row[1];
-            ds.spades![i] = row[2];
-            ds.hearts![i] = row[3];
-            ds.diamonds![i] = row[4];
-            ds.clubs![i] = row[5];
-            ds.conv_flags![i] = row[6];
-            ds.dds_s![i] = row[7];
-            ds.dds_h![i] = row[8];
-            ds.dds_d![i] = row[9];
-            ds.dds_c![i] = row[10];
-            ds.dds_nt![i] = row[11];
-            ds.technique_flags![i] = row[12] ? Number(row[12]) : 0;
-          } else {
-            const r = row as any;
-            ds.deal_id![i] = Number(r.deal_id);
-            ds.opener_hcp![i] = r.opener_hcp;
-            ds.spades![i] = r.spades;
-            ds.hearts![i] = r.hearts;
-            ds.diamonds![i] = r.diamonds;
-            ds.clubs![i] = r.clubs;
-            ds.conv_flags![i] = r.conv_flags;
-            ds.dds_s![i] = r.dds_s;
-            ds.dds_h![i] = r.dds_h;
-            ds.dds_d![i] = r.dds_d;
-            ds.dds_c![i] = r.dds_c;
-            ds.dds_nt![i] = r.dds_nt;
-            ds.technique_flags![i] = r.technique_flags ? Number(r.technique_flags) : 0;
-          }
-        }
+      ds.dds_source = new Array(n).fill('endplay_dds');
+      for (let i = 0; i < n; i++) {
+        const row = data[i];
+        ds.deal_id[i] = Number(row[0]);
+        ds.opener_hcp[i] = row[1];
+        ds.spades[i] = row[2];
+        ds.hearts[i] = row[3];
+        ds.diamonds[i] = row[4];
+        ds.clubs[i] = row[5];
+        ds.conv_flags[i] = row[6];
+        ds.dds_s[i] = row[7];
+        ds.dds_h[i] = row[8];
+        ds.dds_d[i] = row[9];
+        ds.dds_c[i] = row[10];
+        ds.dds_nt[i] = row[11];
       }
     },
   });
-
-  const notesMap = new Map<number, GeminiNote>();
-  if (typeof source === 'string') {
-    try {
-      const jsonUrl = source.replace(/\.parquet(\?.*)?$/, '.json$1');
-      const res = await fetch(jsonUrl);
-      if (res.ok) {
-        const items = await res.json();
-        for (const item of items) {
-          if (item.deal_id !== undefined && item.gemini_note) {
-            notesMap.set(item.deal_id, item.gemini_note);
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[sampleDealsEngine] Could not load sample_deals.json from source url:', e);
-    }
-  }
-
-  // Fallback to local public data if notesMap is empty
-  if (notesMap.size === 0) {
-    try {
-      const localJson = `${import.meta.env.BASE_URL}data/sample_deals.json`;
-      const res = await fetch(localJson);
-      if (res.ok) {
-        const items = await res.json();
-        for (const item of items) {
-          if (item.deal_id !== undefined && item.gemini_note) {
-            notesMap.set(item.deal_id, item.gemini_note);
-          }
-        }
-      }
-    } catch {
-      // Ignore fallback error
-    }
-  }
-  ds.notesMap = notesMap;
-
   return ds as SampleDealsDataset;
 }
 
-/**
- * Fast search through sample deals for rows matching the current filter.
- * Prioritizes deals with Gemini Notes when techniqueMask > 0 or in general.
- */
 export function queryMatchingSamples(
   dataset: SampleDealsDataset,
   filter: BridgeFilter,
   limit: number = 5
 ): SampleDealRecord[] {
-  const matchesWithNotes: SampleDealRecord[] = [];
-  const matchesWithoutNotes: SampleDealRecord[] = [];
-  const {
-    length, deal_id, opener_hcp, spades, hearts, diamonds, clubs, conv_flags,
-    dds_s, dds_h, dds_d, dds_c, dds_nt, technique_flags, notesMap
-  } = dataset;
-
-  for (let i = 0; i < length; i++) {
-    // 1. Convention check
-    if (filter.convMask !== undefined && filter.convMask > 0) {
-      if ((conv_flags[i] & filter.convMask) === 0) continue;
-    }
-
-    // Technique check
-    if (filter.techniqueMask && filter.techniqueMask > 0 && technique_flags) {
-      const rowTech = technique_flags[i];
-      if (filter.techniqueMatchMode === 'ALL') {
-        if ((rowTech & filter.techniqueMask) !== filter.techniqueMask) continue;
-      } else {
-        if ((rowTech & filter.techniqueMask) === 0) continue;
-      }
-    }
-
-    // 2. Opener HCP
-    const hcp = opener_hcp[i];
-    if (filter.minHcp !== undefined && hcp < filter.minHcp) continue;
-    if (filter.maxHcp !== undefined && hcp > filter.maxHcp) continue;
-
-    // 3. Exact suit lengths
-    if (filter.exactClubs !== undefined && clubs[i] !== filter.exactClubs) continue;
-    if (filter.exactDiamonds !== undefined && diamonds[i] !== filter.exactDiamonds) continue;
-    if (filter.exactSpades !== undefined && spades[i] !== filter.exactSpades) continue;
-    if (filter.exactHearts !== undefined && hearts[i] !== filter.exactHearts) continue;
-
-    const id = deal_id[i];
-    const note = notesMap?.get(id);
-
-    const record: SampleDealRecord = {
-      dealId: id,
-      openerHcp: opener_hcp[i],
-      spades: spades[i],
-      hearts: hearts[i],
-      diamonds: diamonds[i],
-      clubs: clubs[i],
-      convFlags: conv_flags[i],
-      ddsS: dds_s[i],
-      ddsH: dds_h[i],
-      ddsD: dds_d[i],
-      ddsC: dds_c[i],
-      ddsNt: dds_nt[i],
-      techniqueFlags: technique_flags ? technique_flags[i] : 0,
-      geminiNote: note,
-    };
-
-    if (note && note.techniques && note.techniques.length > 0) {
-      matchesWithNotes.push(record);
-    } else {
-      matchesWithoutNotes.push(record);
-    }
-
-    if (matchesWithNotes.length >= limit) {
-      break;
-    }
+  const matches: SampleDealRecord[] = [];
+  for (let i = 0; i < dataset.length && matches.length < limit; i++) {
+    if (filter.convMask && (dataset.conv_flags[i] & filter.convMask) === 0) continue;
+    if (filter.minHcp !== undefined && dataset.opener_hcp[i] < filter.minHcp) continue;
+    if (filter.maxHcp !== undefined && dataset.opener_hcp[i] > filter.maxHcp) continue;
+    if (filter.exactClubs !== undefined && dataset.clubs[i] !== filter.exactClubs) continue;
+    if (filter.exactDiamonds !== undefined && dataset.diamonds[i] !== filter.exactDiamonds) continue;
+    if (filter.exactSpades !== undefined && dataset.spades[i] !== filter.exactSpades) continue;
+    if (filter.exactHearts !== undefined && dataset.hearts[i] !== filter.exactHearts) continue;
+    matches.push({
+      dealId: dataset.deal_id[i],
+      openerHcp: dataset.opener_hcp[i],
+      spades: dataset.spades[i],
+      hearts: dataset.hearts[i],
+      diamonds: dataset.diamonds[i],
+      clubs: dataset.clubs[i],
+      convFlags: dataset.conv_flags[i],
+      ddsS: dataset.dds_s[i],
+      ddsH: dataset.dds_h[i],
+      ddsD: dataset.dds_d[i],
+      ddsC: dataset.dds_c[i],
+      ddsNt: dataset.dds_nt[i],
+      ddsSource: 'endplay_dds',
+    });
   }
-
-  return [...matchesWithNotes, ...matchesWithoutNotes].slice(0, limit);
+  return matches;
 }

@@ -1,0 +1,15 @@
+{
+  "algorithm": "Mulberry32 with modulo rejection",
+  "seatOrder": ["North", "East", "South", "West"],
+  "cardEncoding": "0-51: suit = card // 13, rank = card % 13",
+  "rankOrder": ["2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K", "A"],
+  "suitOrder": ["Spades", "Hearts", "Diamonds", "Clubs"],
+  "shuffling": "Fisher-Yates from index 51 down to 1",
+  "seeds": {
+    "0": ["35.693.A5K37.283", "ATQ96.48TA.28T.4", "7J2.Q2.496.QA576", "4K8.75KJ.QJ.JK9T"],
+    "1": ["48.TA87.2J46.QT5", "5A9TK3.5.KT37.34", "7Q6.J2Q.Q.79682A", "2J.6K439.A859.JK"],
+    "42": ["3Q4J.7T6.Q.J5A6T", "5A6.9K5.925J.29Q", "T.423AQ.4A76.K84", "892K7.J8.K8T3.73"],
+    "123456": ["KQ4.T4.956A.32T8", "T68J.K87.KJQ.954", "9253.QJ96.3.7A6K", "A7.A235.T2847.QJ"],
+    "999999": ["87AQ9.7J62.75Q.2", "65.Q35.2JK8T6.J4", "K.98T4.A43.TQ9K6", "J324T.KA.9.5A783"]
+  }
+}

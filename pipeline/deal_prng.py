@@ -6,28 +6,14 @@ parity between Python and TypeScript.
 
 from typing import List, Tuple, Dict
 
+from rng import Mulberry32
+
 SUIT_NAMES = ['Spades', 'Hearts', 'Diamonds', 'Clubs']
 SUIT_SYMBOLS = ['♠', '♥', '♦', '♣']
 RANK_NAMES = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
 HCP_MAP = {12: 4, 11: 3, 10: 2, 9: 1}  # Ace=4, King=3, Queen=2, Jack=1
 
 
-class Mulberry32:
-    """Mulberry32 PRNG - 100% identical implementation to TypeScript version."""
-    def __init__(self, seed: int):
-        self.s = seed & 0xFFFFFFFF
-
-    def next_uint32(self) -> int:
-        self.s = (self.s + 0x6D2B79F5) & 0xFFFFFFFF
-        t = self.s
-        m1 = (t ^ (t >> 15)) & 0xFFFFFFFF
-        m2 = t | 1
-        t = (m1 * m2) & 0xFFFFFFFF
-        t = (t ^ (t + (((t ^ (t >> 7)) * 61) & 0xFFFFFFFF))) & 0xFFFFFFFF
-        return (t ^ (t >> 14)) & 0xFFFFFFFF
-
-    def next_int(self, max_exclusive: int) -> int:
-        return self.next_uint32() % max_exclusive
 
 
 def generate_deal(seed: int) -> Tuple[List[int], List[int], List[int], List[int]]:

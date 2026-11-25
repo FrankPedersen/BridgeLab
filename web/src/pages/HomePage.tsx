@@ -28,16 +28,13 @@ export const HomePage: React.FC<HomePageProps> = ({
           </div>
 
           <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
-            Udforsk millioner af bridge-spil på{' '}
-            <span className="bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-400 bg-clip-text text-transparent">
-              under 5 millisekunder
-            </span>
+            Udforsk Double Dummy-analyse
           </h1>
 
           <p className="mt-4 text-base sm:text-lg text-slate-300 leading-relaxed">
             Velkommen til DDS Explorer: En lynhurtig analyse- og simulationsportal for kontraktbridge.
-            Gennemse præsimulerede Bo Haglund Double Dummy Solver resultater for millioner af spil
-            direkte i din browser — helt uden backend-servere, brugerlogin eller tunge WASM-motorer.
+            Gennemse resultater fra indlæste Double Dummy-datasæt direkte i din browser.
+            Værdier vises kun, når den tilhørende OLAP-database er indlæst og verificeret.
           </p>
 
           <div className="mt-8 flex flex-wrap gap-4">
@@ -70,7 +67,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             <Database className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
             <div>
               <span className="font-bold text-white block">Pre-aggregeret OLAP</span>
-              <span className="text-slate-400">5 mio. spil komprimeret til ~250.000 rækker Parquet.</span>
+              <span className="text-slate-400">Preaggregerede datasæt indlæses som et lokalt TypedArray-view.</span>
             </div>
           </div>
           <div className="flex items-start space-x-3">

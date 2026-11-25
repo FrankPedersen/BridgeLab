@@ -1,8 +1,7 @@
 """
 2_build_olap.py - Pre-aggregated OLAP Table Generation
 Reads raw parquet chunks using DuckDB, groups by all 14 analytical dimensions
-(including technique_flags), and exports compact bridge_olap.parquet with deal_count (uint32).
-Appends technique_flags at index 14 for 100% backwards compatibility with column indices 0..13.
+and exports compact bridge_olap.parquet with deal_count (uint32).
 """
 
 import sys
@@ -57,13 +56,12 @@ def main():
             dds_h::UTINYINT AS dds_h,
             dds_nt::UTINYINT AS dds_nt,
             opp_game::UTINYINT AS opp_game,
-            COUNT(*)::UINTEGER AS deal_count,
-            technique_flags::USMALLINT AS technique_flags
+            COUNT(*)::UINTEGER AS deal_count
         FROM '{chunks_pattern}'
         GROUP BY
             opener_hcp, spades, hearts, diamonds, clubs,
             conv_flags, responder_hcp, spade_fit, heart_fit,
-            dds_s, dds_h, dds_nt, opp_game, technique_flags
+            dds_s, dds_h, dds_nt, opp_game
         ORDER BY opener_hcp ASC, conv_flags ASC
     ) TO '{output_path_str}' (FORMAT PARQUET, COMPRESSION SNAPPY)
     """
@@ -89,7 +87,7 @@ def main():
     print(f"  File size:         {file_size_mb:.2f} MB ({file_size_kb:.1f} KB)")
     print(f"  Output path:       {output_olap_file}")
     print(f"  Web public path:   {web_data_dir / 'bridge_olap.parquet'}")
-    print(f"  Columns:           {table.num_columns} (Indices 0-13 preserved, technique_flags at index 14)")
+    print(f"  Columns:           {table.num_columns} (14 columns; DDS source metadata is retained in raw data)")
 
 
 if __name__ == "__main__":

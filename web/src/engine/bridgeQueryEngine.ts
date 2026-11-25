@@ -19,7 +19,6 @@ export interface OlapColumns {
   dds_nt: Uint8Array;
   opp_game: Uint8Array;
   deal_count: Uint32Array;
-  technique_flags: Uint16Array;
 }
 
 export interface QueryResult {
@@ -54,7 +53,7 @@ export async function loadOlapDataset(source: string | ArrayBuffer): Promise<Ola
   const expectedCols = [
     'opener_hcp', 'spades', 'hearts', 'diamonds', 'clubs',
     'conv_flags', 'responder_hcp', 'spade_fit', 'heart_fit',
-    'dds_s', 'dds_h', 'dds_nt', 'opp_game', 'deal_count', 'technique_flags'
+    'dds_s', 'dds_h', 'dds_nt', 'opp_game', 'deal_count'
   ];
 
   await parquetRead({
@@ -77,7 +76,6 @@ export async function loadOlapDataset(source: string | ArrayBuffer): Promise<Ola
       cols.dds_nt = new Uint8Array(n);
       cols.opp_game = new Uint8Array(n);
       cols.deal_count = new Uint32Array(n);
-      cols.technique_flags = new Uint16Array(n);
 
       if (n > 0) {
         const isArr = Array.isArray(data[0]);
@@ -98,7 +96,6 @@ export async function loadOlapDataset(source: string | ArrayBuffer): Promise<Ola
             cols.dds_nt![i] = row[11];
             cols.opp_game![i] = row[12];
             cols.deal_count![i] = row[13];
-            cols.technique_flags![i] = row[14] ?? 0;
           } else {
             const r = row as any;
             cols.opener_hcp![i] = r.opener_hcp;
@@ -115,7 +112,6 @@ export async function loadOlapDataset(source: string | ArrayBuffer): Promise<Ola
             cols.dds_nt![i] = r.dds_nt;
             cols.opp_game![i] = r.opp_game;
             cols.deal_count![i] = r.deal_count;
-            cols.technique_flags![i] = r.technique_flags ?? 0;
           }
         }
       }
@@ -131,7 +127,7 @@ export async function loadOlapDataset(source: string | ArrayBuffer): Promise<Ola
 }
 
 /**
- * Executes sub-5ms in-memory aggregation loop directly on typed arrays.
+ * Executes in-memory aggregation directly on typed arrays.
  */
 export function runBridgeQuery(db: OlapColumns, filter: BridgeFilter): QueryResult {
   const t0 = performance.now();
@@ -149,7 +145,7 @@ export function runBridgeQuery(db: OlapColumns, filter: BridgeFilter): QueryResu
 
   const {
     length, opener_hcp, spades, hearts, clubs, diamonds, conv_flags,
-    responder_hcp, spade_fit, heart_fit, dds_s, dds_h, dds_nt, opp_game, deal_count, technique_flags
+    responder_hcp, spade_fit, heart_fit, dds_s, dds_h, dds_nt, opp_game, deal_count
   } = db;
 
   for (let i = 0; i < length; i++) {
@@ -158,15 +154,6 @@ export function runBridgeQuery(db: OlapColumns, filter: BridgeFilter): QueryResu
       if ((conv_flags[i] & filter.convMask) === 0) continue;
     }
 
-    // Technique bitmask check
-    if (filter.techniqueMask && filter.techniqueMask > 0 && technique_flags) {
-      const rowTech = technique_flags[i];
-      if (filter.techniqueMatchMode === 'ALL') {
-        if ((rowTech & filter.techniqueMask) !== filter.techniqueMask) continue;
-      } else {
-        if ((rowTech & filter.techniqueMask) === 0) continue;
-      }
-    }
 
     // 2. Opener HCP
     const hcp = opener_hcp[i];

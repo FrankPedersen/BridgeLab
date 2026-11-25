@@ -61,11 +61,11 @@ def main():
     except Exception as e:
         print(f"[Warning] Could not set IAM policy: {e}")
 
-    # 4. Upload parquet files
+    # 4. Upload data files and manifest
     output_dir = Path(__file__).parent / "output"
     if output_dir.exists():
         print(f"[4/4] Uploading Parquet datasets with 7 days cache-control...")
-        for p in output_dir.glob("*.parquet"):
+        for p in list(output_dir.glob("*.parquet")) + list(output_dir.glob("*.json")):
             blob = bucket.blob(f"v1/{p.name}")
             blob.cache_control = "public, max-age=604800"
             blob.upload_from_filename(str(p))

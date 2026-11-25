@@ -23,6 +23,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { path: '/flannery', label: 'Flannery 2♦' },
     { path: '/weak-two', label: 'Weak Two' },
     { path: '/precision', label: 'Precision 1♣' },
+    { path: '/multi', label: 'Multi 2♦' },
     { path: '/explorer', label: 'Fri Explorer' },
   ];
 

@@ -24,27 +24,8 @@ export interface ReconstructedDeal {
   west: HandEvaluation;
 }
 
-export class Mulberry32 {
-  private s: number;
-
-  constructor(seed: number) {
-    this.s = seed >>> 0;
-  }
-
-  nextUint32(): number {
-    this.s = (this.s + 0x6D2B79F5) >>> 0;
-    let t = this.s;
-    const m1 = (t ^ (t >>> 15)) >>> 0;
-    const m2 = (t | 1) >>> 0;
-    t = Math.imul(m1, m2) >>> 0;
-    t = (t ^ ((t + Math.imul(t ^ (t >>> 7), 61)) >>> 0)) >>> 0;
-    return (t ^ (t >>> 14)) >>> 0;
-  }
-
-  nextInt(maxExclusive: number): number {
-    return this.nextUint32() % maxExclusive;
-  }
-}
+import { Mulberry32 } from './rng';
+export { Mulberry32 } from './rng';
 
 const HCP_VALUES: Record<number, number> = {
   12: 4, // Ace

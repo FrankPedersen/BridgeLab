@@ -1,8 +1,8 @@
 """
 1_generate_dds.py - High-Performance Multiprocess Bridge Simulator & DDS Generator
-Scales to 5,000,000 deals using multiprocessing and chunked Parquet writing.
+Scales to 400,000 deals using multiprocessing and chunked Parquet writing.
 Keeps memory usage under 2 GB by streaming chunks to disk.
-Computes technique_flags (uint16) via the FastTechniqueEvaluator two-tier engine.
+Computes 20 endplay Double Dummy results per deal.
 """
 
 import os
@@ -24,11 +24,10 @@ if str(pipeline_dir) not in sys.path:
 
 from deal_prng import generate_deal, evaluate_hand, compute_conv_flags
 from dds_engine import solve_deal
-from technique_detector import FastTechniqueEvaluator
 
 
 def get_schema() -> pa.Schema:
-    return pa.schema([
+    fields = [
         ('deal_id', pa.int64()),
         ('opener_hcp', pa.uint8()),
         ('spades', pa.uint8()),
@@ -45,20 +44,28 @@ def get_schema() -> pa.Schema:
         ('dds_c', pa.uint8()),
         ('dds_nt', pa.uint8()),
         ('opp_game', pa.uint8()),
-        ('technique_flags', pa.uint16()),
-    ])
+    ]
+    for suit in ('s', 'h', 'd', 'c', 'nt'):
+        for player in ('n', 'e', 's', 'w'):
+            fields.append((f'dds_{suit}_{player}', pa.uint8()))
+    fields.append(('dds_source', pa.string()))
+    return pa.schema(fields)
 
 
 def _worker_process_range(start_id: int, count: int) -> tuple:
     """
     Worker function executed in parallel across CPU cores.
-    Processes a slice of deals deterministically and evaluates technique_flags.
+    Processes a slice of deals deterministically using true endplay DDS.
     """
     schema_names = [
         'deal_id', 'opener_hcp', 'spades', 'hearts', 'diamonds', 'clubs',
         'conv_flags', 'responder_hcp', 'spade_fit', 'heart_fit',
-        'dds_s', 'dds_h', 'dds_d', 'dds_c', 'dds_nt', 'opp_game', 'technique_flags'
+        'dds_s', 'dds_h', 'dds_d', 'dds_c', 'dds_nt', 'opp_game'
     ]
+    for suit in ('s', 'h', 'd', 'c', 'nt'):
+        for player in ('n', 'e', 's', 'w'):
+            schema_names.append(f'dds_{suit}_{player}')
+    schema_names.append('dds_source')
     cols = {name: [] for name in schema_names}
     candidates_count = 0
 
@@ -73,15 +80,6 @@ def _worker_process_range(start_id: int, count: int) -> tuple:
 
         conv_flags = compute_conv_flags(s_eval)
         dds = solve_deal((n_cards, e_cards, s_cards, w_cards), n_eval, s_eval, e_eval, w_eval)
-
-        # Tier 1 & Tier 2 Fast Technique Evaluation
-        tech_flags, _ = FastTechniqueEvaluator.evaluate_deal(
-            (n_cards, e_cards, s_cards, w_cards),
-            n_eval, s_eval, e_eval, w_eval, dds,
-            detailed=False
-        )
-        if tech_flags > 0:
-            candidates_count += 1
 
         cols['deal_id'].append(deal_id)
         cols['opener_hcp'].append(s_eval['hcp'])
@@ -99,13 +97,16 @@ def _worker_process_range(start_id: int, count: int) -> tuple:
         cols['dds_c'].append(dds['dds_c'])
         cols['dds_nt'].append(dds['dds_nt'])
         cols['opp_game'].append(dds['opp_game'])
-        cols['technique_flags'].append(tech_flags)
+        for suit in ('s', 'h', 'd', 'c', 'nt'):
+            for player in ('n', 'e', 's', 'w'):
+                cols[f'dds_{suit}_{player}'].append(dds[f'dds_{suit}_{player}'])
+        cols['dds_source'].append(dds['dds_source'])
 
     return cols, candidates_count
 
 
 def main():
-    parser = argparse.ArgumentParser(description="High-performance Bridge DDS & Technique Generator.")
+    parser = argparse.ArgumentParser(description="High-performance true Double Dummy generator.")
     parser.add_argument("--deals", type=int, default=None, help="Total deals to simulate")
     parser.add_argument("--chunk-size", type=int, default=100000, help="Deals per raw parquet chunk")
     parser.add_argument("--workers", type=int, default=None, help="Number of parallel worker processes")
@@ -118,7 +119,7 @@ def main():
     else:
         config = {"simulation": {"test_deals": 50000}}
 
-    total_deals = args.deals if args.deals is not None else config["simulation"].get("test_deals", 50000)
+    total_deals = args.deals if args.deals is not None else config["simulation"].get("total_deals", 400000)
     chunk_size = args.chunk_size
 
     # Optimal CPU workers
@@ -139,7 +140,7 @@ def main():
     schema = get_schema()
     num_chunks = (total_deals + chunk_size - 1) // chunk_size
 
-    print(f"=== BridgeLab 5M DDS & Advanced Technique Generator ===")
+    print("=== BridgeLab True endplay DDS Generator ===")
     print(f"Total deals:        {total_deals:,}")
     print(f"Chunk size:         {chunk_size:,} deals/chunk ({num_chunks} chunks)")
     print(f"Parallel workers:   {num_workers} processes (on {num_cpus} CPU cores)")
@@ -190,23 +191,19 @@ def main():
                 total_generated += current_chunk_size
                 pbar.update(current_chunk_size)
 
-                # Update tqdm description with current speed & technique rate
+                # Update tqdm description with current speed
                 elapsed = time.time() - start_time
                 rate = total_generated / elapsed if elapsed > 0 else 0
-                tech_pct = (total_candidates / total_generated * 100) if total_generated > 0 else 0
                 pbar.set_postfix({
                     "deals/s": f"{rate:,.0f}",
-                    "tech_rate": f"{tech_pct:.1f}%",
                     "chunk": f"{chunk_idx+1}/{num_chunks}"
                 })
 
     elapsed_total = time.time() - start_time
     total_rate = total_generated / elapsed_total if elapsed_total > 0 else 0
-    tech_total_pct = (total_candidates / total_generated * 100) if total_generated > 0 else 0
 
     print(f"\n[OK] Step 1 Complete in {elapsed_total:.2f}s ({total_rate:,.0f} deals/sec)")
     print(f"Generated {total_generated:,} deals across {num_chunks} raw chunks.")
-    print(f"Deals with advanced techniques detected: {total_candidates:,} ({tech_total_pct:.1f}%)")
 
 
 if __name__ == "__main__":

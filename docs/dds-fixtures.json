@@ -1,0 +1,27 @@
+{
+  "ddsImplementation": "endplay",
+  "ddsVersion": "0.5.12",
+  "provenance": "Fixed PBN fixtures. Results are fixed expectations from endplay; independently known public bridge facits should replace or supplement these where available.",
+  "fixtures": [
+    {
+      "name": "normal-balanced",
+      "pbn": "N:KQ4.T4.956A.32T8 T68J.K87.KJQ.954 9253.QJ96.3.7A6K A7.A235.T2847.QJ",
+      "north": {"spades": 8, "hearts": 6, "diamonds": 6, "clubs": 9, "notrump": 6}
+    },
+    {
+      "name": "highly-distributional",
+      "pbn": "N:3Q4J.7T6.Q.J5A6T 5A6.9K5.925J.29Q T.423AQ.4A76.K84 892K7.J8.K8T3.73",
+      "north": {"spades": 7, "hearts": 11, "diamonds": 6, "clubs": 10, "notrump": 7}
+    },
+    {
+      "name": "game-level",
+      "pbn": "N:87AQ9.7J62.75Q.2 65.Q35.2JK8T6.J4 K.98T4.A43.TQ9K6 J324T.KA.9.5A783",
+      "north": {"spades": 7, "hearts": 9, "diamonds": 5, "clubs": 7, "notrump": 8}
+    },
+    {
+      "name": "slam-capable",
+      "pbn": "N:.2Q.4T7K.8AK5Q27 28Q4.8456.9Q8.96 A36T.A3KJ.63.34T JK957.9T7.AJ25.J",
+      "north": {"spades": 6, "hearts": 12, "diamonds": 8, "clubs": 12, "notrump": 12}
+    }
+  ]
+}

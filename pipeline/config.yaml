@@ -1,7 +1,7 @@
 # Bridge DDS Explorer Configuration
 
 simulation:
-  total_deals: 5000000          # Fuld batch-størrelse (5 mio. spil)
+  total_deals: 400000           # Standardbatch-størrelse
   test_deals: 50000             # Hurtig test-batch
   sample_deals_count: 20000     # Eksempler gemt i sample_deals.parquet
   chunk_size: 50000             # Antal spil pr. batch i RAM

@@ -1,19 +1,19 @@
 # Bridge DDS Explorer (Selvstændig Double Dummy Portal)
 
-En selvstændig, serverless analyse- og simulationsportal for kontraktbridge. Udforsk millioner af præsimulerede **Bo Haglund Double Dummy Solver (DDS)** spil lynhurtigt direkte i browseren uden backend-servere, tunge WASM-motorer eller brugerlogin.
+En selvstændig, serverless analyse- og simulationsportal for kontraktbridge. Indlæste præsimulerede **endplay/DDS**-spil analyseres direkte i browseren uden backend-servere, tunge WASM-motorer eller brugerlogin.
 
 ---
 
 ## 🌟 Arkitektur & Nøglefunktioner
 
 1. **Pre-aggregeret OLAP Parquet-klynge:**
-   Millioner af bridge-spil grupperes offline på samtlige statistiske parametre (honnørpoint for åbner og svarer, farvelængder, majorfits, konventions-bitmask og DDS stik) til en kompakt Parquet-fil på ~2,2 MB med **nul tab af statistisk præcision**.
+   Genererede bridge-spil grupperes offline på statistiske parametre (honnørpoint for åbner og svarer, farvelængder, majorfits, konventions-bitmask og DDS-stik) til kompakte Parquet-filer.
 
 2. **TypedArray In-Memory Motor (< 2 ms query):**
-   [Hyparquet](https://github.com/hyparam/hyparquet) (~30 KB ren JavaScript Parquet-dekoder) udpakker kolonnerne direkte til flade `Uint8Array` og `Uint32Array` buffere i browserens RAM. Et optimeret for-loop scanner over 400.000 rækker på blot **1–3 ms** direkte på main-thread.
+   [Hyparquet](https://github.com/hyparam/hyparquet) udpakker kolonner direkte til flade TypedArrays i browserens RAM. Kun målt query-latens må vises som præstationspåstand.
 
 3. **0 ms Initial Render:**
-   Statiske `*_summary.json` filer (~2 KB) er bundlet direkte i web-applikationen, så KPI-tal og fordelinger fremvises øjeblikkeligt (0 ms), før den fulde Parquet-database er færdigindlæst.
+   Statiske `*_summary.json`-filer kan fungere som et præberegnet initialt view, men må kun komme fra en verificeret pipeline-kørsel.
 
 4. **100% Deterministisk Kort-rekonstruktion:**
    Kortene i de 20.000 gemte eksempler rekonstrueres i realtid i browseren ud fra `deal_id` (Mulberry32 PRNG seed + Fisher-Yates shuffle) og matcher Python-simulatoren bit for bit.
@@ -35,7 +35,7 @@ BridgeLab/
 ├── pipeline/                     # Offline Python data-generering
 │   ├── config.yaml               # Konfiguration (antal spil, konventionsregler)
 │   ├── deal_prng.py              # Deterministisk Mulberry32 PRNG & kortfordeling
-│   ├── dds_engine.py             # Double Dummy Solver grænseflade (Bo Haglund DDS / intern)
+│   ├── dds_engine.py             # Double Dummy Solver grænseflade (endplay/DDS)
 │   ├── 1_generate_dds.py         # Batch generering + DDS -> master_dds.parquet
 │   ├── 2_build_olap.py           # Beregner conv_flags bitmask og bygger bridge_olap.parquet
 │   ├── 3_build_samples.py        # Udtrækker sample_deals.parquet + statiske summaries
@@ -74,7 +74,7 @@ BridgeLab/
 ## 🚀 Hurtig Start (Lokal Udvikling)
 
 ### 1. Kør Web Applikationen
-Web-appen har allerede prægenereret data i `web/public/data/` og er klar til kørsel med det samme:
+Web-appen er klar til kørsel. Produktionsdata skal indlæses fra GCS eller placeres lokalt efter en verificeret pipelinekørsel:
 
 ```bash
 cd web
@@ -96,8 +96,8 @@ source .venv/bin/activate
 
 pip install -r requirements.txt
 
-# Generer f.eks. 50.000 eller 500.000 nye spil
-python run_pipeline.py 500000
+# Generer standard 400.000-spils datasæt
+python run_pipeline.py 400000
 ```
 
 ---

@@ -1,25 +1,6 @@
 import React from 'react';
 import { BridgeFilter } from '../engine/bridgeQueryEngine';
-import {
-  TECH_SQUEEZE,
-  TECH_ENDPLAY,
-  TECH_TRUMP_COUP,
-  TECH_UNBLOCK_COUP,
-  TECH_COMMUNICATION_COUP,
-  TECH_CHOICE_COUP,
-  TECH_INTRA_FINESSE,
-} from '../types/bridge';
 import { X, RefreshCw } from 'lucide-react';
-
-const TECHNIQUES = [
-  { bit: TECH_SQUEEZE, label: 'Skvis', desc: 'Squeeze' },
-  { bit: TECH_ENDPLAY, label: 'Slutspil', desc: 'Indspil / Throw-in' },
-  { bit: TECH_TRUMP_COUP, label: 'Trumfkup', desc: 'Trump Coup / En Passant' },
-  { bit: TECH_UNBLOCK_COUP, label: 'Vienna / Anti-Bath', desc: 'Afblokering' },
-  { bit: TECH_COMMUNICATION_COUP, label: 'Scissors / Merrimac', desc: 'Kommunikationskup' },
-  { bit: TECH_CHOICE_COUP, label: "Morton's Fork / Krokodille", desc: 'Valg-kup' },
-  { bit: TECH_INTRA_FINESSE, label: 'Intra-knibning', desc: 'Double Pinning' },
-];
 
 interface AdvancedFilterDrawerProps {
   isOpen: boolean;
@@ -333,112 +314,22 @@ export const AdvancedFilterDrawer: React.FC<AdvancedFilterDrawerProps> = ({
               >
                 Precision (4)
               </button>
+              <button
+                type="button"
+                onClick={() => onFilterChange({ ...filter, convMask: 8 })}
+                className={`py-1.5 px-2 rounded-lg border text-center transition-colors ${
+                  filter.convMask === 8
+                    ? 'bg-cyan-600/30 border-cyan-400 text-cyan-200'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                Multi 2♦ (8)
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Section: Avancerede Spilteknikker (DDS) */}
-      <div className="mt-6 pt-5 border-t border-slate-800">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <div className="flex items-center space-x-2">
-            <span className="font-semibold text-slate-200 uppercase tracking-wider text-[11px]">
-              🎯 Avancerede Spilteknikker (DDS)
-            </span>
-            <span className="text-[10px] text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60 font-mono">
-              Mask: {filter.techniqueMask ?? 0}
-            </span>
-          </div>
-
-          <div className="flex items-center space-x-3 text-xs">
-            {/* Segmented OR / AND toggle */}
-            <div className="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800">
-              <button
-                type="button"
-                onClick={() => onFilterChange({ ...filter, techniqueMatchMode: 'ANY' })}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
-                  (filter.techniqueMatchMode ?? 'ANY') === 'ANY'
-                    ? 'bg-amber-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Mindst én valgt (OR)
-              </button>
-              <button
-                type="button"
-                onClick={() => onFilterChange({ ...filter, techniqueMatchMode: 'ALL' })}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
-                  filter.techniqueMatchMode === 'ALL'
-                    ? 'bg-amber-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Alle valgte (AND)
-              </button>
-            </div>
-
-            {/* Reset techniques button */}
-            {filter.techniqueMask && filter.techniqueMask > 0 ? (
-              <button
-                type="button"
-                onClick={() => {
-                  const updated = { ...filter };
-                  delete updated.techniqueMask;
-                  delete updated.techniqueMatchMode;
-                  onFilterChange(updated);
-                }}
-                className="text-amber-400 hover:text-amber-300 underline text-xs"
-              >
-                Nulstil teknikker
-              </button>
-            ) : null}
-          </div>
-        </div>
-
-        {/* Multi-select toggle chips */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2">
-          {TECHNIQUES.map((tech) => {
-            const isSelected = ((filter.techniqueMask ?? 0) & tech.bit) !== 0;
-            return (
-              <button
-                key={tech.bit}
-                type="button"
-                onClick={() => {
-                  const currentMask = filter.techniqueMask ?? 0;
-                  const newMask = currentMask ^ tech.bit;
-                  onFilterChange({
-                    ...filter,
-                    techniqueMask: newMask === 0 ? undefined : newMask,
-                  });
-                }}
-                className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all ${
-                  isSelected
-                    ? 'bg-amber-950/70 border-amber-500/80 text-amber-200 shadow-md shadow-amber-950/50'
-                    : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-300'
-                }`}
-              >
-                <div className="flex items-center justify-between w-full mb-1">
-                  <span className="font-bold text-xs leading-tight text-white">
-                    {tech.label}
-                  </span>
-                  <span
-                    className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] ${
-                      isSelected
-                        ? 'bg-amber-500 border-amber-400 text-slate-950 font-black'
-                        : 'border-slate-700'
-                    }`}
-                  >
-                    {isSelected ? '✓' : ''}
-                  </span>
-                </div>
-                <span className="text-[10px] text-slate-400 truncate">
-                  {tech.desc}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 };
